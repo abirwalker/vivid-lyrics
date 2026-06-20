@@ -1,15 +1,64 @@
 import type { TransformedLyrics } from "../lyrics/types";
-import { loadLyrics, getLyrics, onLyricsChange } from "../stores/lyrics";
+import { loadLyrics, onLyricsChange } from "../stores/lyrics";
+import { setPageMode } from "../stores/page";
+import storage from "../utils/storage";
 
 const ANCHOR = ".main-nowPlayingView-nowPlayingWidget";
 const ANCHOR_FALLBACK = ".main-nowPlayingView-coverArtContainer";
 const NATIVE_LYRICS_QUERY =
   ".main-nowPlayingView-section:not(:is(#VividLyrics-Card)):has(.main-nowPlayingView-lyricsTitle)";
 
+const CloseIcon = `<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M1.47 1.47a.75.75 0 0 1 1.06 0L8 6.94l5.47-5.47a.75.75 0 1 1 1.06 1.06L9.06 8l5.47 5.47a.75.75 0 1 1-1.06 1.06L8 9.06l-5.47 5.47a.75.75 0 0 1-1.06-1.06L6.94 8 1.47 2.53a.75.75 0 0 1 0-1.06z"/></svg>`;
+const LyricsIcon = `<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M13.5 1h-11A1.5 1.5 0 0 0 1 2.5v11A1.5 1.5 0 0 0 2.5 15h11a1.5 1.5 0 0 0 1.5-1.5v-11A1.5 1.5 0 0 0 13.5 1Zm-7 11H4V9h2.5v3Zm4 0H8V5h2.5v7Zm2.5 0h-2.5V7H16v5a1 1 0 0 1-1 1Z"/></svg>`;
+
 let card: HTMLDivElement | null = null;
+let currentLyrics: TransformedLyrics | null = null;
+let currentUri: string | null = null;
+
+function getVisible(): boolean {
+  return storage.get("CardLyricsVisible") !== "false";
+}
+
+function setVisible(visible: boolean): void {
+  storage.set("CardLyricsVisible", String(visible));
+}
 
 function getTrackUri(): string | null {
   return Spicetify.Player.data?.item?.uri ?? null;
+}
+
+function renderShowButton(): HTMLDivElement {
+  const el = document.createElement("div");
+  el.id = "VividLyrics-Card";
+  el.style.cssText = "padding:16px;color:var(--text-base);font-size:14px;";
+
+  const header = document.createElement("div");
+  header.style.cssText = "display:flex;justify-content:space-between;align-items:center;";
+
+  const title = document.createElement("div");
+  title.textContent = "Lyrics";
+  title.style.cssText = "font-weight:700;font-size:16px;";
+  header.appendChild(title);
+
+  const btn = document.createElement("button");
+  btn.style.cssText = `
+    background: none;
+    border: none;
+    color: var(--text-subdued);
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    transition: color 0.2s;
+  `;
+  btn.textContent = "Show lyrics";
+  btn.addEventListener("mouseenter", () => { btn.style.color = "var(--text-base)"; });
+  btn.addEventListener("mouseleave", () => { btn.style.color = "var(--text-subdued)"; });
+  btn.addEventListener("click", () => setLyricsVisibility(true));
+  header.appendChild(btn);
+
+  el.appendChild(header);
+  return el;
 }
 
 function renderCard(lyrics: TransformedLyrics): HTMLDivElement {
@@ -25,13 +74,25 @@ function renderCard(lyrics: TransformedLyrics): HTMLDivElement {
   title.style.cssText = "font-weight:700;font-size:16px;";
   header.appendChild(title);
 
-  const viewBtn = document.createElement("button");
-  viewBtn.textContent = "View Full";
-  viewBtn.style.cssText = "background:var(--spice-button,rgba(255,255,255,0.1));border:none;color:var(--text-base);padding:4px 8px;border-radius:4px;cursor:pointer;font-size:11px;";
-  viewBtn.addEventListener("click", () => {
-    (Spicetify.Platform.History as any).push({ pathname: "/vivid-lyrics" });
-  });
-  header.appendChild(viewBtn);
+  const closeBtn = document.createElement("button");
+  closeBtn.title = "Hide lyrics";
+  closeBtn.style.cssText = `
+    background: none;
+    border: none;
+    color: var(--text-subdued);
+    cursor: pointer;
+    padding: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    transition: color 0.2s;
+  `;
+  closeBtn.innerHTML = CloseIcon;
+  closeBtn.addEventListener("mouseenter", () => { closeBtn.style.color = "var(--text-base)"; });
+  closeBtn.addEventListener("mouseleave", () => { closeBtn.style.color = "var(--text-subdued)"; });
+  closeBtn.addEventListener("click", () => setLyricsVisibility(false));
+  header.appendChild(closeBtn);
   el.appendChild(header);
 
   if (lyrics.type === "Static") {
@@ -68,23 +129,72 @@ function renderCard(lyrics: TransformedLyrics): HTMLDivElement {
     el.appendChild(credits);
   }
 
+  const footer = document.createElement("div");
+  footer.style.cssText = "margin-top:12px;display:flex;justify-content:center;";
+
+  const viewBtn = document.createElement("button");
+  viewBtn.title = "Open cinema view";
+  viewBtn.style.cssText = `
+    background: none;
+    border: none;
+    color: var(--text-subdued);
+    cursor: pointer;
+    padding: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    transition: color 0.2s;
+  `;
+  viewBtn.innerHTML = LyricsIcon;
+  viewBtn.addEventListener("mouseenter", () => { viewBtn.style.color = "var(--text-base)"; });
+  viewBtn.addEventListener("mouseleave", () => { viewBtn.style.color = "var(--text-subdued)"; });
+  viewBtn.addEventListener("click", () => { setPageMode("cinema"); });
+  footer.appendChild(viewBtn);
+  el.appendChild(footer);
+
   return el;
 }
 
-function mountCard(lyrics: TransformedLyrics | null) {
-  card?.remove();
-  card = null;
+function setLyricsVisibility(visible: boolean): void {
+  setVisible(visible);
+  reactToVisibility();
+}
 
-  if (!lyrics) {
+function reactToVisibility(): void {
+  const visible = getVisible();
+
+  if (visible) {
+    if (currentLyrics) {
+      showCard(currentLyrics);
+    } else {
+      showLoading();
+      const uri = getTrackUri();
+      if (uri) loadLyrics(uri);
+    }
+  } else {
+    showShowButton();
+  }
+}
+
+function showCard(lyrics: TransformedLyrics | null) {
+  card?.remove();
+  if (lyrics) {
+    card = renderCard(lyrics);
+  } else {
     const noLyrics = document.createElement("div");
     noLyrics.id = "VividLyrics-Card";
     noLyrics.style.cssText = "padding:16px;color:var(--text-base);font-size:14px;opacity:0.5;";
     noLyrics.textContent = "No lyrics available";
     card = noLyrics;
-  } else {
-    card = renderCard(lyrics);
   }
+  const anchor = document.querySelector(ANCHOR) ?? document.querySelector(ANCHOR_FALLBACK);
+  if (anchor) anchor.after(card);
+}
 
+function showShowButton() {
+  card?.remove();
+  card = renderShowButton();
   const anchor = document.querySelector(ANCHOR) ?? document.querySelector(ANCHOR_FALLBACK);
   if (anchor) anchor.after(card);
 }
@@ -101,10 +211,23 @@ function showLoading() {
   if (anchor) anchor.after(card);
 }
 
+function onLyricsUpdate(lyrics: TransformedLyrics | null) {
+  currentLyrics = lyrics;
+  if (getVisible()) {
+    showCard(lyrics);
+  }
+}
+
 async function onSongChange() {
   const uri = getTrackUri();
   console.log("[VividLyrics] songChange uri:", uri);
   if (!uri) return;
+  currentUri = uri;
+
+  if (!getVisible()) {
+    showShowButton();
+    return;
+  }
 
   showLoading();
   await loadLyrics(uri);
@@ -135,7 +258,7 @@ function observeNPV() {
       const handler = () => onSongChange();
       Spicetify.Player.addEventListener("songchange", handler);
 
-      lyricsUnsub = onLyricsChange((lyrics) => mountCard(lyrics));
+      lyricsUnsub = onLyricsChange((lyrics) => onLyricsUpdate(lyrics));
       onSongChange();
 
       removeCb = () => {
