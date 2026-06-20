@@ -1,0 +1,9 @@
+/* SimpleBar */
+.simplebar-content-wrapper {
+    overflow: auto;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+.simplebar-content-wrapper::-webkit-scrollbar {
+    display: none;
+}

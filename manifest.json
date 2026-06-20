@@ -1,0 +1,25 @@
+[
+  {
+    "name": "Vivid Lyrics",
+    "description": "Making lyrics fun again — bounce, glow, and immersive views for Spotify lyrics.",
+    "preview": "./previews/preview.gif",
+    "main": "./builds/vivid-lyrics.mjs",
+    "readme": "README.md",
+    "branch": "main",
+    "authors": [
+      { "name": "abirwalker", "url": "https://github.com/abirwalker" }
+    ],
+    "tags": [
+      "lyrics",
+      "vivid",
+      "karaoke",
+      "syllable",
+      "animated",
+      "glow",
+      "bounce",
+      "background",
+      "fullscreen",
+      "spicetify"
+    ]
+  }
+]
