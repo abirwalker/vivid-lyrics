@@ -22,4 +22,11 @@ declare namespace Spicetify {
     get(key: string): string | null;
     set(key: string, value: string): void;
   };
+  namespace Menu {
+    class Item {
+      constructor(name: string, isEnabled: boolean, onClick: (self: Item) => void, icon?: string);
+      register(): void;
+      deregister(): void;
+    }
+  }
 }
