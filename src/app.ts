@@ -1,3 +1,5 @@
+import { setupCardView } from "./components/card-view";
+
 const VividLyrics = { version: "0.1.0" };
 
 async function waitForSpicetify(): Promise<void> {
@@ -18,6 +20,8 @@ async function main() {
 
   (window as any).__vivid_lyrics = VividLyrics;
   console.log("[Vivid Lyrics] Loaded v" + VividLyrics.version);
+
+  setupCardView();
 }
 
 main();
