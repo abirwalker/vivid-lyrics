@@ -1,6 +1,7 @@
 import type { TransformedLyrics } from "./types";
 import { query } from "../utils/query";
 import { adaptLyrics } from "./adapt";
+import { getLyricsFromCache, setLyricsCache, setLyricsCacheNegative } from "../utils/lyrics-cache";
 
 async function getAccessToken(): Promise<string> {
   try {
@@ -20,23 +21,33 @@ function getTrackId(uri: string): string | null {
 
 export async function fetchLyrics(uri: string): Promise<TransformedLyrics | null> {
   const trackId = getTrackId(uri);
-  console.log("[VividLyrics] fetchLyrics trackId:", trackId);
   if (!trackId) return null;
+
+  const cached = getLyricsFromCache(trackId);
+  if (cached !== undefined) {
+    console.log("[VividLyrics] cache hit:", trackId);
+    return cached;
+  }
+
+  console.log("[VividLyrics] cache miss:", trackId);
 
   try {
     const accessToken = await getAccessToken();
-    console.log("[VividLyrics] accessToken:", accessToken ? "ok" : "missing");
     const results = await query(
       [{ operation: "lyrics", variables: { id: trackId, auth: "SpicyLyrics-WebAuth" } }],
       { "SpicyLyrics-WebAuth": `Bearer ${accessToken}` }
     );
 
     const result = results.get("0");
-    console.log("[VividLyrics] result:", result?.httpStatus, result?.data ? "has data" : "no data");
-    if (!result || result.httpStatus === 404) return null;
+    if (!result || result.httpStatus === 404) {
+      setLyricsCacheNegative(trackId);
+      return null;
+    }
     if (result.httpStatus !== 200) return null;
 
-    return adaptLyrics(result.data);
+    const lyrics = adaptLyrics(result.data);
+    setLyricsCache(trackId, lyrics);
+    return lyrics;
   } catch (err) {
     console.error("[VividLyrics] fetchLyrics error:", err);
     return null;
