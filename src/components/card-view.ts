@@ -2,7 +2,7 @@ import type { TransformedLyrics } from "../lyrics/types";
 import { loadLyrics, onLyricsChange } from "../stores/lyrics";
 import { setPageMode } from "../stores/page";
 import storage from "../utils/storage";
-import { onPositionChange } from "../utils/playback-tracker";
+import LyricsRenderer from "../modules/lyrics-renderer";
 import "../styles/lyrics.scss";
 
 const ANCHOR = ".main-nowPlayingView-nowPlayingWidget";
@@ -14,14 +14,9 @@ const CloseIcon = `<svg width="16" height="16" viewBox="0 0 16 16" fill="current
 const LyricsIcon = `<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M13.5 1h-11A1.5 1.5 0 0 0 1 2.5v11A1.5 1.5 0 0 0 2.5 15h11a1.5 1.5 0 0 0 1.5-1.5v-11A1.5 1.5 0 0 0 13.5 1Zm-7 11H4V9h2.5v3Zm4 0H8V5h2.5v7Zm2.5 0h-2.5V7H16v5a1 1 0 0 1-1 1Z"/></svg>`;
 
 let card: HTMLDivElement | null = null;
+let renderer: LyricsRenderer | null = null;
 let currentLyrics: TransformedLyrics | null = null;
 let currentUri: string | null = null;
-let positionUnsub: (() => void) | null = null;
-let lineElements: HTMLDivElement[] = [];
-let lastActiveIdx = -1;
-
-type LineTiming = { el: HTMLDivElement; startTime: number; endTime: number };
-let lineTimings: LineTiming[] = [];
 
 function getVisible(): boolean {
   return storage.get("CardLyricsVisible") !== "false";
@@ -79,44 +74,9 @@ function renderCard(lyrics: TransformedLyrics): HTMLDivElement {
 
   const body = document.createElement("div");
   body.className = "VL-LyricsBody";
-
-  lineElements = [];
-  lineTimings = [];
-  lastActiveIdx = -1;
-
-  if (lyrics.type === "Static") {
-    for (const line of lyrics.lines) {
-      const p = document.createElement("div");
-      p.textContent = line.text;
-      p.className = "VL-Line vl-static";
-      lineElements.push(p);
-      body.appendChild(p);
-    }
-  } else {
-    const content = "content" in lyrics ? (lyrics as any).content : [];
-    for (const item of content) {
-      if (item.Type === "Interlude") continue;
-      const text = item.Text ?? item.Lead?.Syllables?.map((s: any) => s.Text).join("") ?? "";
-      if (!text) continue;
-
-      const startTime = (item.StartTime ?? item.Lead?.StartTime ?? 0) as number;
-      const endTime = (item.EndTime ?? item.Lead?.EndTime ?? 0) as number;
-
-      const p = document.createElement("div");
-      p.textContent = text;
-      p.className = "VL-Line";
-      p.dataset.startTime = String(startTime);
-      p.dataset.endTime = String(endTime);
-      p.addEventListener("click", () => {
-        Spicetify.Player.seek(startTime * 1000);
-      });
-      lineElements.push(p);
-      lineTimings.push({ el: p, startTime, endTime });
-      body.appendChild(p);
-    }
-  }
-
   el.appendChild(body);
+
+  renderer = new LyricsRenderer(body, lyrics);
 
   if (lyrics.songWriters?.length) {
     const credits = document.createElement("div");
@@ -132,50 +92,18 @@ function renderCard(lyrics: TransformedLyrics): HTMLDivElement {
   viewBtn.className = "VL-CinemaBtn";
   viewBtn.title = "Open cinema view";
   viewBtn.innerHTML = LyricsIcon;
-  viewBtn.addEventListener("click", () => { setPageMode("cinema"); });
+  viewBtn.addEventListener("click", () => {
+    setPageMode("cinema");
+  });
   footer.appendChild(viewBtn);
   el.appendChild(footer);
-
-  startSync();
 
   return el;
 }
 
-function startSync(): void {
-  stopSync();
-  positionUnsub = onPositionChange((ms) => {
-    const songSec = ms / 1000;
-    let activeIdx = -1;
-
-    for (let i = 0; i < lineTimings.length; i++) {
-      const t = lineTimings[i];
-      if (songSec >= t.startTime && songSec <= t.endTime) {
-        activeIdx = i;
-        break;
-      }
-    }
-
-    if (activeIdx === lastActiveIdx) return;
-    lastActiveIdx = activeIdx;
-
-    for (let i = 0; i < lineTimings.length; i++) {
-      const el = lineTimings[i].el;
-      const isActive = i === activeIdx;
-      const isPast = activeIdx >= 0 && i < activeIdx;
-
-      el.classList.toggle("vl-active", isActive);
-      el.classList.toggle("vl-past", isPast);
-    }
-
-    if (activeIdx >= 0 && lineTimings[activeIdx]) {
-      lineTimings[activeIdx].el.scrollIntoView({ behavior: "smooth", block: "center" });
-    }
-  });
-}
-
-function stopSync(): void {
-  positionUnsub?.();
-  positionUnsub = null;
+function destroyRenderer(): void {
+  renderer?.destroy();
+  renderer = null;
 }
 
 function setLyricsVisibility(visible: boolean): void {
@@ -200,7 +128,7 @@ function reactToVisibility(): void {
 }
 
 function showCard(lyrics: TransformedLyrics | null) {
-  stopSync();
+  destroyRenderer();
   card?.remove();
   if (lyrics) {
     card = renderCard(lyrics);
@@ -216,7 +144,7 @@ function showCard(lyrics: TransformedLyrics | null) {
 }
 
 function showShowButton() {
-  stopSync();
+  destroyRenderer();
   card?.remove();
   card = renderShowButton();
   const anchor = document.querySelector(ANCHOR) ?? document.querySelector(ANCHOR_FALLBACK);
@@ -224,7 +152,7 @@ function showShowButton() {
 }
 
 function showLoading() {
-  stopSync();
+  destroyRenderer();
   card?.remove();
   const loading = document.createElement("div");
   loading.id = "VividLyrics-Card";
@@ -290,7 +218,7 @@ function observeNPV() {
         Spicetify.Player.removeEventListener("songchange", handler);
         nativeObserver?.disconnect();
         lyricsUnsub?.();
-        stopSync();
+        destroyRenderer();
         card?.remove();
         card = null;
       };

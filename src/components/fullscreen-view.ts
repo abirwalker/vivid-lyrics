@@ -1,9 +1,11 @@
 import { setPageMode, getPageMode, onPageModeChange } from "../stores/page";
 import { getLyrics, onLyricsChange } from "../stores/lyrics";
 import type { TransformedLyrics } from "../lyrics/types";
+import LyricsRenderer from "../modules/lyrics-renderer";
 
 let portal: HTMLDivElement | null = null;
 let content: HTMLDivElement | null = null;
+let activeRenderer: LyricsRenderer | null = null;
 
 const STYLES = `
   .VividLyrics-FullscreenPortal {
@@ -48,16 +50,15 @@ const STYLES = `
   .VividLyrics-FullscreenContent .VL-FS-Lyrics {
     max-width: 800px;
     width: 100%;
-    padding: 48px 32px;
-    overflow-y: auto;
-    max-height: 100vh;
+    height: 80vh;
+    padding: 0 32px;
     color: white;
-    font-size: 20px;
-    line-height: 2;
     text-align: center;
+    display: flex;
+    flex-direction: column;
   }
-  .VividLyrics-FullscreenContent .VL-FS-Lyrics::-webkit-scrollbar {
-    display: none;
+  .VividLyrics-FullscreenContent .VL-FS-Lyrics .LyricsScrollContainer {
+    height: 100%;
   }
   .VividLyrics-FullscreenContent .VL-FS-Line {
     padding: 4px 0;
@@ -81,6 +82,10 @@ function renderLyrics(lyrics: TransformedLyrics | null): void {
   const lyricsEl = content.querySelector<HTMLElement>(".VL-FS-Lyrics");
   if (!lyricsEl) return;
 
+  if (activeRenderer) {
+    activeRenderer.destroy();
+    activeRenderer = null;
+  }
   lyricsEl.innerHTML = "";
 
   if (!lyrics) {
@@ -95,24 +100,10 @@ function renderLyrics(lyrics: TransformedLyrics | null): void {
       p.className = "VL-FS-Line";
       lyricsEl.appendChild(p);
     }
-  } else {
-    const items = "content" in lyrics ? (lyrics as any).content : [];
-    for (const item of items) {
-      if (item.Type === "Interlude") continue;
-      const text = item.Text ?? item.Lead?.Syllables?.map((s: any) => s.Text).join("") ?? "";
-      if (!text) continue;
-
-      const p = document.createElement("div");
-      p.textContent = text;
-      p.className = "VL-FS-Line";
-      p.dataset.startTime = String(item.StartTime ?? item.Lead?.StartTime ?? 0);
-      p.addEventListener("click", () => {
-        const t = parseFloat(p.dataset.startTime ?? "0");
-        Spicetify.Player.seek(t * 1000);
-      });
-      lyricsEl.appendChild(p);
-    }
+    return;
   }
+
+  activeRenderer = new LyricsRenderer(lyricsEl, lyrics);
 
   if (lyrics.songWriters?.length) {
     const credits = document.createElement("div");

@@ -1,11 +1,13 @@
 import type { TransformedLyrics } from "../lyrics/types";
 import { loadLyrics, onLyricsChange } from "../stores/lyrics";
 import { setPageMode } from "../stores/page";
+import LyricsRenderer from "../modules/lyrics-renderer";
 
 const BASE_ROUTE = "/vivid-lyrics";
 let pageContainer: HTMLDivElement | null = null;
 let isOpen = false;
 let lyricsUnsub: (() => void) | null = null;
+let activeRenderer: LyricsRenderer | null = null;
 
 const PAGE_ROOT_SELECTORS = [
   ".Root__main-view .main-view-container div[data-overlayscrollbars-viewport]",
@@ -25,6 +27,11 @@ function renderPage(lyrics: TransformedLyrics | null): void {
   if (!pageContainer) return;
 
   const content = pageContainer.querySelector<HTMLElement>(".VividLyrics-PageContent")!;
+
+  if (activeRenderer) {
+    activeRenderer.destroy();
+    activeRenderer = null;
+  }
   content.innerHTML = "";
 
   if (!lyrics) {
@@ -40,23 +47,7 @@ function renderPage(lyrics: TransformedLyrics | null): void {
       content.appendChild(p);
     }
   } else {
-    const items = "content" in lyrics ? (lyrics as any).content : [];
-    for (const item of items) {
-      if (item.Type === "Interlude") continue;
-      const text = item.Text ?? item.Lead?.Syllables?.map((s: any) => s.Text).join("") ?? "";
-      if (!text) continue;
-
-      const p = document.createElement("div");
-      p.textContent = text;
-      p.style.cssText = "padding:4px 0;opacity:0.7;";
-      p.dataset.startTime = String(item.StartTime ?? item.Lead?.StartTime ?? 0);
-      p.style.cursor = "pointer";
-      p.addEventListener("click", () => {
-        const t = parseFloat(p.dataset.startTime ?? "0");
-        Spicetify.Player.seek(t * 1000);
-      });
-      content.appendChild(p);
-    }
+    activeRenderer = new LyricsRenderer(content, lyrics);
   }
 
   if (lyrics.songWriters?.length) {
@@ -151,6 +142,9 @@ function closePage(): void {
 
   lyricsUnsub?.();
   lyricsUnsub = null;
+
+  activeRenderer?.destroy();
+  activeRenderer = null;
 
   pageContainer?.remove();
   pageContainer = null;

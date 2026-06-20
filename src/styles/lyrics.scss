@@ -17,8 +17,8 @@
   .VL-CardHeader {
     display: flex !important;
     align-items: center;
+    justify-content: space-between;
     gap: 8px;
-    margin-bottom: 8px;
     flex-shrink: 0;
     position: relative;
     z-index: 10;
@@ -73,12 +73,13 @@
     height: auto;
     min-width: 0;
     min-height: 0;
-    padding: 4px 12px;
+    padding: 5px 14px;
     border: 1px solid rgba(255, 255, 255, 0.62) !important;
     border-radius: 9999px;
-    font-size: 0.875rem;
-    font-weight: 700;
-    color: var(--text-base, #000);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--text-base, #fff);
+    white-space: nowrap;
   }
 
   .VL-LyricsBody {
@@ -88,56 +89,8 @@
     scrollbar-width: none;
     -ms-overflow-style: none;
 
-    font-family: SpicyLyrics, var(--fallback-fonts, sans-serif);
-    font-size: clamp(1rem, 4cqw, 1.4rem);
-    line-height: 1.8;
-
     &::-webkit-scrollbar {
       display: none;
-    }
-  }
-
-  .VL-Line {
-    --l-opacity: 0.51;
-    --l-scale: 1;
-
-    display: block !important;
-    opacity: var(--l-opacity) !important;
-    transform: scale(var(--l-scale));
-    transform-origin: center left;
-
-    padding: 3px 0 !important;
-    margin: 0 !important;
-    font-size: inherit !important;
-    font-weight: 700 !important;
-    line-height: inherit !important;
-    letter-spacing: normal !important;
-    text-transform: none !important;
-
-    transition:
-      opacity 0.25s cubic-bezier(0.61, 1, 0.88, 1),
-      transform 0.25s cubic-bezier(0.61, 1, 0.88, 1);
-
-    cursor: pointer;
-    word-break: keep-all;
-    overflow-wrap: break-word;
-
-    &:hover {
-      --l-opacity: 0.75;
-    }
-
-    &.vl-active {
-      --l-opacity: 1;
-      --l-scale: 1.04;
-    }
-
-    &.vl-past {
-      --l-opacity: 0.497;
-    }
-
-    &.vl-static {
-      cursor: default;
-      color: rgba(255, 255, 255, 0.85) !important;
     }
   }
 
@@ -157,4 +110,126 @@
   .VL-CardFooter {
     display: none;
   }
+}
+
+// LyricsRenderer styles (spicy-card compatible)
+.LyricsScrollContainer {
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  position: relative;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+.Lyrics {
+  font-family: SpicyLyrics, var(--fallback-fonts, sans-serif);
+  font-size: clamp(1rem, 4cqw, 1.4rem);
+  line-height: 1.8;
+  padding: 0 4px;
+}
+
+.VocalsGroup {
+  display: block;
+  width: 100%;
+  background: none !important;
+  border: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  text-align: inherit;
+  cursor: pointer;
+  font: inherit;
+
+  &:hover .Vocals.Lead {
+    opacity: 0.75;
+  }
+}
+
+.Vocals {
+  padding: 0;
+  margin: 0;
+  font-size: inherit;
+  font-weight: 700;
+
+  &.Lead {
+    opacity: 0.51;
+    transition: opacity 0.25s cubic-bezier(0.61, 1, 0.88, 1);
+
+    &.Active {
+      opacity: 1;
+    }
+
+    &.Sung {
+      opacity: 0.497;
+    }
+  }
+
+  &.Background {
+    opacity: 0.275;
+    font-size: calc(inherit * 0.75);
+    font-weight: 500;
+
+    &.Active {
+      opacity: 0.8;
+    }
+
+    &.Sung {
+      opacity: 0.332;
+    }
+  }
+}
+
+.Lyric {
+  display: inline;
+
+  &.Synced {
+    background-image: linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.9) var(--line-progress, 0%),
+      rgba(255, 255, 255, 0.4) var(--line-progress-2, 0%)
+    );
+    background-clip: text;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  &.Static {
+    color: rgba(255, 255, 255, 0.9);
+  }
+
+  &.Line {
+    display: block;
+    white-space: pre-wrap;
+  }
+}
+
+.Word {
+  display: inline;
+
+  &::after {
+    content: " ";
+  }
+}
+
+.Syllable {
+  display: inline;
+  background-image: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.9) var(--char-progress, 0%),
+    rgba(255, 255, 255, 0.4) var(--char-progress-2, 0%)
+  );
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.Interlude {
+  display: none;
+  text-align: center;
+  opacity: 0.3;
+  padding: 8px 0;
+  font-size: 0.8em;
 }
