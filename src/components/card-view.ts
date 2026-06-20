@@ -1,5 +1,5 @@
-import { fetchLyrics } from "../lyrics/fetch";
 import type { TransformedLyrics } from "../lyrics/types";
+import { loadLyrics, getLyrics, onLyricsChange } from "../stores/lyrics";
 
 const ANCHOR = ".main-nowPlayingView-nowPlayingWidget";
 const ANCHOR_FALLBACK = ".main-nowPlayingView-coverArtContainer";
@@ -7,7 +7,6 @@ const NATIVE_LYRICS_QUERY =
   ".main-nowPlayingView-section:not(:is(#VividLyrics-Card)):has(.main-nowPlayingView-lyricsTitle)";
 
 let card: HTMLDivElement | null = null;
-let currentFetchId = 0;
 
 function getTrackUri(): string | null {
   return Spicetify.Player.data?.item?.uri ?? null;
@@ -60,36 +59,43 @@ function renderCard(lyrics: TransformedLyrics): HTMLDivElement {
   return el;
 }
 
+function mountCard(lyrics: TransformedLyrics | null) {
+  card?.remove();
+  card = null;
+
+  if (!lyrics) {
+    const noLyrics = document.createElement("div");
+    noLyrics.id = "VividLyrics-Card";
+    noLyrics.style.cssText = "padding:16px;color:var(--text-base);font-size:14px;opacity:0.5;";
+    noLyrics.textContent = "No lyrics available";
+    card = noLyrics;
+  } else {
+    card = renderCard(lyrics);
+  }
+
+  const anchor = document.querySelector(ANCHOR) ?? document.querySelector(ANCHOR_FALLBACK);
+  if (anchor) anchor.after(card);
+}
+
+function showLoading() {
+  card?.remove();
+  const loading = document.createElement("div");
+  loading.id = "VividLyrics-Card";
+  loading.style.cssText = "padding:16px;color:var(--text-base);font-size:14px;opacity:0.5;";
+  loading.textContent = "Loading lyrics...";
+  card = loading;
+
+  const anchor = document.querySelector(ANCHOR) ?? document.querySelector(ANCHOR_FALLBACK);
+  if (anchor) anchor.after(card);
+}
+
 async function onSongChange() {
   const uri = getTrackUri();
   console.log("[VividLyrics] songChange uri:", uri);
   if (!uri) return;
 
-  currentFetchId++;
-  const fetchId = currentFetchId;
-
-  // Clean previous card
-  card?.remove();
-  card = null;
-
-  // Loading state
-  const loading = document.createElement("div");
-  loading.id = "VividLyrics-Card";
-  loading.style.cssText = "padding:16px;color:var(--text-base);font-size:14px;opacity:0.5;";
-  loading.textContent = "Loading lyrics...";
-  const anchor = document.querySelector(ANCHOR) ?? document.querySelector(ANCHOR_FALLBACK);
-  if (anchor) anchor.after(loading);
-
-  const lyrics = await fetchLyrics(uri);
-  if (fetchId !== currentFetchId) return;
-
-  loading.remove();
-
-  if (lyrics) {
-    card = renderCard(lyrics);
-    const anchor = document.querySelector(ANCHOR) ?? document.querySelector(ANCHOR_FALLBACK);
-    if (anchor) anchor.after(card);
-  }
+  showLoading();
+  await loadLyrics(uri);
 }
 
 function suppressNativeLyrics(container: Element) {
@@ -101,6 +107,7 @@ function observeNPV() {
   let current: Element | null = null;
   let removeCb: (() => void) | null = null;
   let nativeObserver: MutationObserver | null = null;
+  let lyricsUnsub: (() => void) | null = null;
 
   const check = () => {
     const el = document.body.querySelector(`${ANCHOR}, ${ANCHOR_FALLBACK}`);
@@ -109,20 +116,20 @@ function observeNPV() {
       if (current && removeCb) removeCb();
       current = el;
 
-      // Suppress native lyrics
       suppressNativeLyrics(el.parentElement!);
       nativeObserver = new MutationObserver(() => suppressNativeLyrics(el.parentElement!));
       nativeObserver.observe(el.parentElement!, { childList: true });
 
-      // Song change listener
       const handler = () => onSongChange();
       Spicetify.Player.addEventListener("songchange", handler);
-      onSongChange(); // trigger for current song
+
+      lyricsUnsub = onLyricsChange((lyrics) => mountCard(lyrics));
+      onSongChange();
 
       removeCb = () => {
         Spicetify.Player.removeEventListener("songchange", handler);
         nativeObserver?.disconnect();
-        currentFetchId++;
+        lyricsUnsub?.();
         card?.remove();
         card = null;
       };
