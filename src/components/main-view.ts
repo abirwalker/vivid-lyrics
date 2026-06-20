@@ -1,4 +1,3 @@
-import { getLyrics } from "../stores/lyrics";
 import type { TransformedLyrics } from "../lyrics/types";
 import { loadLyrics, onLyricsChange } from "../stores/lyrics";
 import { setPageMode } from "../stores/page";
@@ -6,6 +5,7 @@ import { setPageMode } from "../stores/page";
 const BASE_ROUTE = "/vivid-lyrics";
 let pageContainer: HTMLDivElement | null = null;
 let isOpen = false;
+let lyricsUnsub: (() => void) | null = null;
 
 const PAGE_ROOT_SELECTORS = [
   ".Root__main-view .main-view-container div[data-overlayscrollbars-viewport]",
@@ -89,7 +89,9 @@ function open(): void {
     <style>
       #VividLyrics-MainPage {
         padding: 24px;
-        min-height: 100vh;
+        max-width: 800px;
+        margin: 0 auto;
+        color: var(--text-base);
       }
       #VividLyrics-MainPage .VividLyrics-PageTitle {
         font-size: 24px;
@@ -97,7 +99,8 @@ function open(): void {
         margin-bottom: 16px;
       }
       #VividLyrics-MainPage .VividLyrics-PageContent {
-        line-height: 1.8;
+        line-height: 2;
+        font-size: 16px;
       }
       #VividLyrics-MainPage .VividLyrics-Toolbar {
         display: flex;
@@ -136,11 +139,18 @@ function open(): void {
       if (isOpen) renderPage(lyrics);
     });
   }
+
+  lyricsUnsub = onLyricsChange((lyrics) => {
+    if (isOpen) renderPage(lyrics);
+  });
 }
 
 function closePage(): void {
   if (!isOpen) return;
   isOpen = false;
+
+  lyricsUnsub?.();
+  lyricsUnsub = null;
 
   pageContainer?.remove();
   pageContainer = null;
