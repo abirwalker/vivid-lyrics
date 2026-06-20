@@ -17,10 +17,22 @@ function renderCard(lyrics: TransformedLyrics): HTMLDivElement {
   el.id = "VividLyrics-Card";
   el.style.cssText = "padding:16px;color:var(--text-base);font-size:14px;line-height:1.8;";
 
+  const header = document.createElement("div");
+  header.style.cssText = "display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;";
+
   const title = document.createElement("div");
   title.textContent = "Lyrics";
-  title.style.cssText = "font-weight:700;font-size:16px;margin-bottom:12px;";
-  el.appendChild(title);
+  title.style.cssText = "font-weight:700;font-size:16px;";
+  header.appendChild(title);
+
+  const viewBtn = document.createElement("button");
+  viewBtn.textContent = "View Full";
+  viewBtn.style.cssText = "background:var(--spice-button,rgba(255,255,255,0.1));border:none;color:var(--text-base);padding:4px 8px;border-radius:4px;cursor:pointer;font-size:11px;";
+  viewBtn.addEventListener("click", () => {
+    (Spicetify.Platform.History as any).push({ pathname: "/vivid-lyrics" });
+  });
+  header.appendChild(viewBtn);
+  el.appendChild(header);
 
   if (lyrics.type === "Static") {
     for (const line of lyrics.lines) {

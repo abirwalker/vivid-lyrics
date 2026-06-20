@@ -1,4 +1,6 @@
 import { setupCardView } from "./components/card-view";
+import { setupFullscreen } from "./components/fullscreen-view";
+import { setupMainPage } from "./components/main-view";
 
 const VividLyrics = { version: "0.1.0" };
 
@@ -22,6 +24,8 @@ async function main() {
   console.log("[Vivid Lyrics] Loaded v" + VividLyrics.version);
 
   setupCardView();
+  setupFullscreen();
+  setupMainPage();
 }
 
 main();
