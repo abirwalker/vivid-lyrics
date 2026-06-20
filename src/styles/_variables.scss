@@ -1,0 +1,36 @@
+$font: SpotifyMixUI, CircularSp-Arab, CircularSp-Hebr, CircularSp-Cyrl, CircularSp-Grek,
+  CircularSp-Deva, var(--fallback-fonts, sans-serif);
+
+$fs-xs: 12px;
+$fs-sm: 14px;
+$fs-base: 16px;
+$fs-md: 18px;
+$fs-lg: 22px;
+
+$fw-normal: 400;
+$fw-medium: 500;
+$fw-bold: 700;
+
+$space-xs: 4px;
+$space-sm: 6px;
+$space-base: 8px;
+$space-md: 12px;
+$space-lg: 16px;
+$space-xl: 20px;
+
+$r-xs: 4px;
+$r-sm: 6px;
+$r-md: 12px;
+$r-full: 9999px;
+
+$ease-fast: 0.2s ease;
+$ease-base: 0.3s ease;
+$ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+$ease-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+$color: #fff;
+$color-muted: #b3b3b3;
+$color-dim: #d6d6d6;
+
+$glass-bg: rgba(255, 255, 255, 0.08);
+$glass-bd: rgba(255, 255, 255, 0.2);
