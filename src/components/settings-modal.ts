@@ -1,5 +1,6 @@
 import { getSettings, get, set, resetSettings, type Settings } from "../stores/settings";
 import storage from "../utils/storage";
+import "../styles/settings.scss";
 
 const FONT_CSS_URL = "https://fonts.spikerko.org/spicy-lyrics/source.css";
 const CACHE_KEY = "spicy-font-css";
@@ -58,134 +59,6 @@ export function applyStoredFont(): void {
 
 let overlay: HTMLDivElement | null = null;
 let isOpen = false;
-
-const STYLES = `
-  .VL-SettingsOverlay {
-    position: fixed;
-    inset: 0;
-    z-index: 9999;
-    background: rgba(0,0,0,0.6);
-    backdrop-filter: blur(8px);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-  .VL-SettingsModal {
-    background: #282828;
-    border-radius: 12px;
-    width: min(60vw, 40rem);
-    max-height: 85vh;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-    box-shadow: 0 16px 48px rgba(0,0,0,0.5);
-    color: #fff;
-  }
-  .VL-SettingsModal header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 20px 24px 12px;
-  }
-  .VL-SettingsModal header h2 {
-    margin: 0;
-    font-size: 20px;
-    font-weight: 700;
-  }
-  .VL-SettingsModal .VL-CloseBtn {
-    background: none;
-    border: none;
-    color: #b3b3b3;
-    cursor: pointer;
-    padding: 4px;
-    display: flex;
-    align-items: center;
-    border-radius: 50%;
-    transition: color 0.2s;
-  }
-  .VL-SettingsModal .VL-CloseBtn:hover { color: #fff; }
-  .VL-SettingsModal .VL-Content {
-    overflow-y: auto;
-    padding: 0 24px 24px;
-    flex: 1;
-  }
-  .VL-SettingsModal .VL-Section {
-    margin-bottom: 20px;
-  }
-  .VL-SettingsModal .VL-SectionTitle {
-    font-size: 13px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    color: #b3b3b3;
-    margin: 0 0 12px;
-  }
-  .VL-SettingsModal .VL-Row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 10px 0;
-    border-bottom: 1px solid rgba(255,255,255,0.07);
-  }
-  .VL-SettingsModal .VL-Row:last-child { border-bottom: none; }
-  .VL-SettingsModal .VL-RowInfo { flex: 1; }
-  .VL-SettingsModal .VL-RowLabel { font-size: 14px; display: block; }
-  .VL-SettingsModal .VL-RowDesc { font-size: 12px; color: #b3b3b3; display: block; margin-top: 2px; }
-  .VL-SettingsModal .VL-RowControl { margin-left: 16px; }
-  .VL-SettingsModal input[type="range"] {
-    width: 120px;
-    accent-color: #1db954;
-  }
-  .VL-SettingsModal select {
-    background: #3e3e3e;
-    border: none;
-    color: #fff;
-    padding: 6px 10px;
-    border-radius: 4px;
-    font-size: 13px;
-    cursor: pointer;
-  }
-  .VL-SettingsModal .VL-Toggle {
-    width: 40px;
-    height: 22px;
-    background: #535353;
-    border: none;
-    border-radius: 11px;
-    cursor: pointer;
-    position: relative;
-    transition: background 0.2s;
-  }
-  .VL-SettingsModal .VL-Toggle::after {
-    content: "";
-    position: absolute;
-    top: 3px;
-    left: 3px;
-    width: 16px;
-    height: 16px;
-    background: #fff;
-    border-radius: 50%;
-    transition: transform 0.2s;
-  }
-  .VL-SettingsModal .VL-Toggle.active { background: #1db954; }
-  .VL-SettingsModal .VL-Toggle.active::after { transform: translateX(18px); }
-  .VL-SettingsModal .VL-ResetBtn {
-    background: rgba(255,255,255,0.1);
-    border: none;
-    color: #b3b3b3;
-    padding: 8px 16px;
-    border-radius: 6px;
-    cursor: pointer;
-    font-size: 13px;
-    transition: background 0.2s;
-  }
-  .VL-SettingsModal .VL-ResetBtn:hover { background: rgba(255,255,255,0.2); color: #fff; }
-  .VL-SettingsModal .VL-Version {
-    text-align: center;
-    font-size: 12px;
-    color: #535353;
-    padding-top: 8px;
-  }
-`;
 
 function makeRow(label: string, desc: string, control: HTMLElement): HTMLElement {
   const row = document.createElement("div");
@@ -250,7 +123,7 @@ function makeSelect(options: { label: string; value: string }[], current: string
 
 function makeSoon(): HTMLElement {
   const el = document.createElement("span");
-  el.style.cssText = "font-size:11px;color:#535353;font-style:italic;";
+  el.className = "VL-Soon";
   el.textContent = "SOON\u2122";
   return el;
 }
@@ -378,7 +251,5 @@ export function closeModal(): void {
 }
 
 export function setupSettings(): void {
-  const style = document.createElement("style");
-  style.textContent = STYLES;
-  document.head.appendChild(style);
+  // styles loaded via settings.scss import
 }

@@ -1,0 +1,8 @@
+@use "variables" as v;
+
+:root {
+    --vl-font-stack: var(--encore-body-font-stack, v.$font);
+}
+.vl-font-spicy {
+    --vl-font-stack: SpicyLyrics, var(--fallback-fonts, sans-serif);
+}

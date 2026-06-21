@@ -1,0 +1,136 @@
+.LyricsScrollContainer {
+    overflow-y: auto;
+    overflow-x: hidden;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    position: relative;
+    container-type: inline-size;
+
+    &::-webkit-scrollbar {
+        display: none;
+    }
+}
+
+#VividLyrics-Card .LyricsScrollContainer {
+    flex: 1;
+    min-height: 0;
+}
+
+.VL-FS-Line {
+    padding: 4px 0;
+    opacity: 0.85;
+    font-family: var(--vl-font-stack, sans-serif);
+    font-size: calc(clamp(1.85rem, 7cqw, 3.5rem) * var(--vl-font-size, 1));
+    line-height: 1.6;
+}
+
+.Lyrics {
+    font-family: var(--vl-font-stack, sans-serif);
+    font-size: calc(clamp(1.85rem, 7cqw, 3.5rem) * var(--vl-font-size, 1));
+    line-height: 1.1818181818;
+    padding: 0 4px;
+}
+
+.VocalsGroup {
+    display: block;
+    width: 100%;
+    background: none !important;
+    border: none !important;
+    padding: 0 !important;
+    margin: 1cqw 0 !important;
+    text-align: inherit;
+    cursor: pointer;
+    font: inherit;
+    line-height: 1.1818181818;
+
+    &:hover .Vocals.Lead {
+        opacity: 1;
+    }
+}
+
+.Vocals {
+    padding: 0;
+    margin: 0;
+    font-size: inherit;
+    font-weight: 700;
+    max-width: 96%;
+
+    &.Lead {
+        opacity: 0.51;
+        transition: opacity 0.25s cubic-bezier(0.61, 1, 0.88, 1);
+
+        &.Active {
+            opacity: 1;
+        }
+
+        &.Sung {
+            opacity: 0.497;
+        }
+    }
+
+    &.Background {
+        opacity: 0.275;
+        font-size: calc(inherit * 0.75);
+        font-weight: 500;
+
+        &.Active {
+            opacity: 0.8;
+        }
+
+        &.Sung {
+            opacity: 0.332;
+        }
+    }
+}
+
+.Lyric {
+    display: inline;
+
+    &.Synced {
+        background-image: linear-gradient(
+            90deg,
+            rgba(255, 255, 255, 0.85) var(--line-progress, 0%),
+            rgba(255, 255, 255, 0.5) var(--line-progress-2, 0%)
+        );
+        background-clip: text;
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+    }
+
+    &.Static {
+        color: rgba(255, 255, 255, 0.9);
+    }
+
+    &.Line {
+        display: block;
+        white-space: pre-wrap;
+    }
+}
+
+.Word {
+    display: inline;
+
+    &::after {
+        content: " ";
+    }
+}
+
+.Syllable {
+    display: inline;
+    background-image: linear-gradient(
+        90deg,
+        rgba(255, 255, 255, 0.85) var(--char-progress, 0%),
+        rgba(255, 255, 255, 0.5) var(--char-progress-2, 0%)
+    );
+    background-clip: text;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.Interlude {
+    display: none;
+    text-align: center;
+    opacity: 0.3;
+    padding: 8px 0;
+    font-size: 0.8em;
+}

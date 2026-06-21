@@ -52,13 +52,19 @@ function renderPage(lyrics: TransformedLyrics | null): void {
     }
     if (lyrics.songWriters?.length) {
       const credits = document.createElement("div");
+      credits.className = "VividLyrics-Credits";
       credits.textContent = `Written by: ${lyrics.songWriters.join(", ")}`;
-      credits.style.cssText = "margin-top:24px;font-size:12px;opacity:0.4;";
       scroll.appendChild(credits);
     }
     content.appendChild(scroll);
   } else {
     activeRenderer = new LyricsRenderer(content, lyrics);
+    if (lyrics.songWriters?.length) {
+      const credits = document.createElement("div");
+      credits.className = "VividLyrics-Credits";
+      credits.textContent = `Written by: ${lyrics.songWriters.join(", ")}`;
+      activeRenderer.appendCredits(credits);
+    }
   }
 }
 
@@ -81,46 +87,13 @@ function open(): void {
   pageContainer = document.createElement("div");
   pageContainer.id = "VividLyrics-MainPage";
   pageContainer.innerHTML = `
-    <style>
-      #VividLyrics-MainPage {
-        padding: 24px;
-        max-width: 800px;
-        margin: 0 auto;
-        color: var(--text-base);
-      }
-      #VividLyrics-MainPage .VividLyrics-PageTitle {
-        font-size: 24px;
-        font-weight: 700;
-        margin-bottom: 16px;
-      }
-      #VividLyrics-MainPage .VividLyrics-PageContent {
-        line-height: 2;
-        font-size: 16px;
-      }
-      #VividLyrics-MainPage .VividLyrics-Toolbar {
-        display: flex;
-        gap: 8px;
-        margin-bottom: 16px;
-      }
-      #VividLyrics-MainPage .VividLyrics-Toolbar button {
-        background: var(--spice-button, rgba(255,255,255,0.1));
-        border: none;
-        color: var(--text-base);
-        padding: 6px 12px;
-        border-radius: 4px;
-        cursor: pointer;
-        font-size: 12px;
-      }
-      #VividLyrics-MainPage .VividLyrics-Toolbar button:hover {
-        background: var(--spice-button-pressed, rgba(255,255,255,0.2));
-      }
-    </style>
     <div class="VividLyrics-PageTitle">Lyrics</div>
     ${renderToolbar()}
     <div class="VividLyrics-PageContent">Loading...</div>
   `;
 
-  pageRoot.appendChild(pageContainer);
+  pageRoot.prepend(pageContainer);
+  pageRoot.scrollTop = 0;
 
   const cinemaBtn = pageContainer.querySelector<HTMLButtonElement>("#VividLyrics-CinemaBtn")!;
   const fullscreenBtn = pageContainer.querySelector<HTMLButtonElement>("#VividLyrics-FullscreenBtn")!;

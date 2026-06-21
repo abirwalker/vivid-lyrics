@@ -3,80 +3,11 @@ import { getLyrics, onLyricsChange } from "../stores/lyrics";
 import { get } from "../stores/settings";
 import type { TransformedLyrics } from "../lyrics/types";
 import LyricsRenderer from "../modules/lyrics-renderer";
+import "../styles/fullscreen.scss";
 
 let portal: HTMLDivElement | null = null;
 let content: HTMLDivElement | null = null;
 let activeRenderer: LyricsRenderer | null = null;
-
-const STYLES = `
-  .VividLyrics-FullscreenPortal {
-    pointer-events: none;
-  }
-  .VividLyrics-FullscreenContent {
-    position: fixed;
-    z-index: 9995;
-    overflow: hidden;
-    height: 100vh;
-    width: 100vw;
-    inset: 0;
-    background-color: #000;
-    pointer-events: all;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-  }
-  .VividLyrics-FullscreenContent .VL-FS-CloseBtn {
-    position: absolute;
-    top: 16px;
-    right: 16px;
-    z-index: 9999;
-    background: rgba(255,255,255,0.1);
-    border: none;
-    color: white;
-    width: 32px;
-    height: 32px;
-    border-radius: 50%;
-    cursor: pointer;
-    font-size: 18px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    opacity: 0;
-    transition: opacity 0.3s;
-  }
-  .VividLyrics-FullscreenContent:hover .VL-FS-CloseBtn {
-    opacity: 1;
-  }
-  .VividLyrics-FullscreenContent .VL-FS-Lyrics {
-    max-width: 800px;
-    width: 100%;
-    height: 80vh;
-    padding: 0 32px;
-    color: white;
-    text-align: center;
-    display: flex;
-    flex-direction: column;
-    container-type: inline-size;
-  }
-  .VividLyrics-FullscreenContent .VL-FS-Lyrics .LyricsScrollContainer {
-    height: 100%;
-  }
-  .VividLyrics-FullscreenContent .VL-FS-Line {
-    padding: 4px 0;
-    opacity: 0.5;
-    transition: opacity 0.3s, transform 0.3s;
-    cursor: pointer;
-  }
-  .VividLyrics-FullscreenContent .VL-FS-Line:hover {
-    opacity: 0.8;
-  }
-  .VividLyrics-FullscreenContent .VL-FS-Credits {
-    margin-top: 32px;
-    font-size: 12px;
-    opacity: 0.3;
-  }
-`;
 
 function renderLyrics(lyrics: TransformedLyrics | null): void {
   if (!content) return;
@@ -191,10 +122,6 @@ function setupModeReaction(): void {
 }
 
 export function setupFullscreen(): void {
-  const style = document.createElement("style");
-  style.textContent = STYLES;
-  document.head.appendChild(style);
-
   portal = document.createElement("div");
   portal.className = "VividLyrics-FullscreenPortal";
   portal.style.display = "none";

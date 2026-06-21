@@ -231,6 +231,13 @@ function observeNPV() {
       lyricsUnsub = onLyricsChange((lyrics) => onLyricsUpdate(lyrics));
       onSongChange();
 
+      if (!getTrackUri()) {
+        setTimeout(() => {
+          if (!getTrackUri()) return;
+          onSongChange();
+        }, 1000);
+      }
+
       removeCb = () => {
         Spicetify.Player.removeEventListener("songchange", handler);
         nativeObserver?.disconnect();

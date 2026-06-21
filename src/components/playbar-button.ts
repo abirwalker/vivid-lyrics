@@ -1,5 +1,6 @@
 import VividIcon from "../utils/vivid-icon";
 import { setPageMode, getPageMode } from "../stores/page";
+import "../styles/playbar.scss";
 
 const EXTRA_CONTROLS_SEL = ".main-nowPlayingBar-extraControls";
 const VIVID_ROUTE = "/vivid-lyrics";
@@ -15,27 +16,14 @@ function isVividActive(): boolean {
 
 function updateVividActive(): void {
   if (!vividBtn) return;
-  vividBtn.style.color = isVividActive() ? "#1db954" : "";
+  vividBtn.classList.toggle("active", isVividActive());
 }
 
 function makeBtn(icon: string, title: string, onClick: () => void): HTMLButtonElement {
   const btn = document.createElement("button");
   btn.title = title;
-  btn.style.cssText = `
-    background: none;
-    border: none;
-    color: var(--text-subdued);
-    cursor: pointer;
-    padding: 8px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 50%;
-    transition: color 0.2s;
-  `;
+  btn.className = "VL-PlaybarBtn";
   btn.innerHTML = icon;
-  btn.addEventListener("mouseenter", () => { btn.style.color = "var(--text-base)"; });
-  btn.addEventListener("mouseleave", () => { btn.style.color = "var(--text-subdued)"; });
   btn.addEventListener("click", onClick);
   return btn;
 }
