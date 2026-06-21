@@ -2,6 +2,7 @@ import { setPageMode, getPageMode, onPageModeChange } from "../stores/page";
 import { getLyrics, onLyricsChange } from "../stores/lyrics";
 import { get } from "../stores/settings";
 import type { TransformedLyrics } from "../lyrics/types";
+import { whyamidoingthis, getNoLyricsMessage } from "../utils/no-lyrics-messages";
 import LyricsRenderer from "../modules/lyrics-renderer";
 import "../styles/fullscreen.scss";
 
@@ -22,7 +23,7 @@ function renderLyrics(lyrics: TransformedLyrics | null): void {
   lyricsEl.innerHTML = "";
 
   if (!lyrics) {
-    lyricsEl.innerHTML = `<div style="opacity:0.5;">No lyrics available</div>`;
+    lyricsEl.innerHTML = `<div class="VL-StatusText" style="text-align:center;">${getNoLyricsMessage()}</div>`;
     return;
   }
 

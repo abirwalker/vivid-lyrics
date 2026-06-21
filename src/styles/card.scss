@@ -100,6 +100,25 @@
         padding: 32px 16px 2px 16px;
     }
 
+    .VL-StatusText {
+        font-size: calc(14px * var(--vl-font-size, 1));
+        opacity: 0.6;
+        padding: 8px 0;
+        line-height: 1.5;
+        text-align: center;
+    }
+
+    #VividLyrics-NoLyrics {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 80px;
+
+        .VL-StatusText {
+            margin: 0;
+        }
+    }
+
     .VL-Credits {
         color: var(--text-base, #fff);
         font-family: var(--encore-body-font-stack, v.$font);

@@ -2,6 +2,7 @@ import type { TransformedLyrics } from "../lyrics/types";
 import { loadLyrics, onLyricsChange } from "../stores/lyrics";
 import { setPageMode } from "../stores/page";
 import { get } from "../stores/settings";
+import { whyamidoingthis, getNoLyricsMessage } from "../utils/no-lyrics-messages";
 import LyricsRenderer from "../modules/lyrics-renderer";
 
 const BASE_ROUTE = "/vivid-lyrics";
@@ -36,7 +37,7 @@ function renderPage(lyrics: TransformedLyrics | null): void {
   content.innerHTML = "";
 
   if (!lyrics) {
-    content.innerHTML = `<div style="padding:32px;text-align:center;opacity:0.5;">No lyrics available</div>`;
+    content.innerHTML = `<div class="VL-StatusText" style="text-align:center;">${getNoLyricsMessage()}</div>`;
     return;
   }
 

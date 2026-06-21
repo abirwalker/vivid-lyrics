@@ -3,6 +3,7 @@ import { loadLyrics, onLyricsChange } from "../stores/lyrics";
 import { setPageMode } from "../stores/page";
 import { get } from "../stores/settings";
 import storage from "../utils/storage";
+import { whyamidoingthis, getNoLyricsMessage, resetNoLyricsMessage } from "../utils/no-lyrics-messages";
 import LyricsRenderer from "../modules/lyrics-renderer";
 import "../styles/lyrics.scss";
 
@@ -66,6 +67,7 @@ function ensureCard(): void {
 
   body = document.createElement("div");
   body.className = "VL-LyricsBody";
+  body.style.setProperty("--vl-font-size", String(get("fontSize") / 100));
   card.appendChild(body);
 }
 
@@ -86,7 +88,6 @@ function populateBody(lyrics: TransformedLyrics): void {
   if (lyrics.type === "Static") {
     const scroll = document.createElement("div");
     scroll.className = "LyricsScrollContainer";
-    scroll.style.setProperty("--vl-font-size", String(get("fontSize") / 100));
     for (const line of lyrics.lines) {
       const lineEl = document.createElement("div");
       lineEl.className = "VL-FS-Line";
@@ -132,7 +133,7 @@ function reactToVisibility(): void {
     } else {
       clearBody();
       const loading = document.createElement("div");
-      loading.className = "VL-Line vl-static";
+      loading.className = "VL-StatusText";
       loading.textContent = "Loading lyrics...";
       body!.appendChild(loading);
       const uri = getTrackUri();
@@ -153,10 +154,13 @@ function showNoLyrics(): void {
   header!.appendChild(closeBtn!);
   showBtn!.remove();
   clearBody();
-  const noLyrics = document.createElement("div");
-  noLyrics.className = "VL-Line vl-static";
-  noLyrics.textContent = "No lyrics available";
-  body!.appendChild(noLyrics);
+  const container = document.createElement("div");
+  container.id = "VividLyrics-NoLyrics";
+  const noLyrics = document.createElement("p");
+  noLyrics.className = "VL-StatusText";
+  noLyrics.textContent = getNoLyricsMessage();
+  container.appendChild(noLyrics);
+  body!.appendChild(container);
   ensureInDOM();
 }
 
@@ -184,6 +188,7 @@ async function onSongChange() {
   console.log("[VividLyrics] songChange uri:", uri);
   if (!uri) return;
   currentUri = uri;
+  resetNoLyricsMessage();
 
   if (!getVisible()) {
     reactToVisibility();
@@ -195,7 +200,7 @@ async function onSongChange() {
   showBtn!.remove();
   clearBody();
   const loading = document.createElement("div");
-  loading.className = "VL-Line vl-static";
+  loading.className = "VL-StatusText";
   loading.textContent = "Loading lyrics...";
   body!.appendChild(loading);
   ensureInDOM();
