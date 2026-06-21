@@ -1,5 +1,6 @@
 import { setPageMode, getPageMode, onPageModeChange } from "../stores/page";
 import { getLyrics, onLyricsChange } from "../stores/lyrics";
+import { get } from "../stores/settings";
 import type { TransformedLyrics } from "../lyrics/types";
 import LyricsRenderer from "../modules/lyrics-renderer";
 
@@ -56,6 +57,7 @@ const STYLES = `
     text-align: center;
     display: flex;
     flex-direction: column;
+    container-type: inline-size;
   }
   .VividLyrics-FullscreenContent .VL-FS-Lyrics .LyricsScrollContainer {
     height: 100%;
@@ -94,6 +96,7 @@ function renderLyrics(lyrics: TransformedLyrics | null): void {
   }
 
   if (lyrics.type === "Static") {
+    lyricsEl.style.setProperty("--vl-font-size", String(get("fontSize") / 100));
     for (const line of lyrics.lines) {
       const p = document.createElement("div");
       p.textContent = line.text;

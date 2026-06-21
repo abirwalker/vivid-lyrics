@@ -8,6 +8,7 @@ export type Settings = {
   autoScroll: boolean;
   blurEnabled: boolean;
   romanization: boolean;
+  fontSize: number;
 };
 
 const defaults: Settings = {
@@ -18,6 +19,7 @@ const defaults: Settings = {
   autoScroll: true,
   blurEnabled: true,
   romanization: false,
+  fontSize: 100,
 };
 
 let current: Settings = { ...defaults };

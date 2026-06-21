@@ -115,6 +115,7 @@
   scrollbar-width: none;
   -ms-overflow-style: none;
   position: relative;
+  container-type: inline-size;
 
   &::-webkit-scrollbar {
     display: none;
@@ -131,12 +132,12 @@
 .VL-FS-Line {
   padding: 4px 0;
   opacity: 0.85;
-  font-size: clamp(1rem, 4cqw, 1.4rem);
+  font-size: calc(clamp(1rem, 4cqw, 1.4rem) * var(--vl-font-size, 1));
   line-height: 1.6;
 }
 .Lyrics {
   font-family: SpicyLyrics, var(--fallback-fonts, sans-serif);
-  font-size: clamp(1rem, 4cqw, 1.4rem);
+  font-size: calc(clamp(1rem, 4cqw, 1.4rem) * var(--vl-font-size, 1));
   line-height: 1.8;
   padding: 0 4px;
 }

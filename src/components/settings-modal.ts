@@ -207,6 +207,11 @@ function buildContent(): HTMLElement {
   const sections: Record<string, { label: string; desc: string; control: HTMLElement }[]> = {
     "Lyrics": [
       { label: "Auto-scroll", desc: "Scroll to active line", control: makeToggle(s.autoScroll, (v) => set("autoScroll", v)) },
+      { label: "Font Size", desc: "Lyrics text size", control: makeSelect([
+        { label: "Small", value: "100" },
+        { label: "Normal", value: "130" },
+        { label: "Large", value: "160" },
+      ], String(s.fontSize), (v) => set("fontSize", Number(v))) },
     ],
     "Background": [
       { label: "Mode", desc: "Background style", control: makeSelect([

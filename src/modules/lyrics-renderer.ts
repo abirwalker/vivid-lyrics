@@ -45,12 +45,18 @@ export default class LyricsRenderer {
     this.lyricsContainer.className = "Lyrics";
     this.scrollContainer.appendChild(this.lyricsContainer);
 
+    this.applyFontSize();
     this.buildLines();
     parentContainer.appendChild(this.scrollContainer);
 
     if (lyrics.type !== "Static") {
       this.startLoop();
     }
+  }
+
+  private applyFontSize(): void {
+    const scale = get("fontSize") / 100;
+    this.scrollContainer.style.setProperty("--vl-font-size", String(scale));
   }
 
   private buildLines(): void {

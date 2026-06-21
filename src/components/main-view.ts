@@ -1,6 +1,7 @@
 import type { TransformedLyrics } from "../lyrics/types";
 import { loadLyrics, onLyricsChange } from "../stores/lyrics";
 import { setPageMode } from "../stores/page";
+import { get } from "../stores/settings";
 import LyricsRenderer from "../modules/lyrics-renderer";
 
 const BASE_ROUTE = "/vivid-lyrics";
@@ -40,21 +41,24 @@ function renderPage(lyrics: TransformedLyrics | null): void {
   }
 
   if (lyrics.type === "Static") {
+    const scroll = document.createElement("div");
+    scroll.className = "LyricsScrollContainer";
+    scroll.style.setProperty("--vl-font-size", String(get("fontSize") / 100));
     for (const line of lyrics.lines) {
       const p = document.createElement("div");
       p.textContent = line.text;
-      p.style.cssText = "padding:4px 0;opacity:0.7;";
-      content.appendChild(p);
+      p.className = "VL-FS-Line";
+      scroll.appendChild(p);
     }
+    if (lyrics.songWriters?.length) {
+      const credits = document.createElement("div");
+      credits.textContent = `Written by: ${lyrics.songWriters.join(", ")}`;
+      credits.style.cssText = "margin-top:24px;font-size:12px;opacity:0.4;";
+      scroll.appendChild(credits);
+    }
+    content.appendChild(scroll);
   } else {
     activeRenderer = new LyricsRenderer(content, lyrics);
-  }
-
-  if (lyrics.songWriters?.length) {
-    const credits = document.createElement("div");
-    credits.textContent = `Written by: ${lyrics.songWriters.join(", ")}`;
-    credits.style.cssText = "margin-top:24px;font-size:12px;opacity:0.4;";
-    content.appendChild(credits);
   }
 }
 

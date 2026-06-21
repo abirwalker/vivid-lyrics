@@ -1,6 +1,7 @@
 import type { TransformedLyrics } from "../lyrics/types";
 import { loadLyrics, onLyricsChange } from "../stores/lyrics";
 import { setPageMode } from "../stores/page";
+import { get } from "../stores/settings";
 import storage from "../utils/storage";
 import LyricsRenderer from "../modules/lyrics-renderer";
 import "../styles/lyrics.scss";
@@ -78,6 +79,7 @@ function renderCard(lyrics: TransformedLyrics): HTMLDivElement {
   if (lyrics.type === "Static") {
     const scroll = document.createElement("div");
     scroll.className = "LyricsScrollContainer";
+    scroll.style.setProperty("--vl-font-size", String(get("fontSize") / 100));
     for (const line of lyrics.lines) {
       const lineEl = document.createElement("div");
       lineEl.className = "VL-FS-Line";
