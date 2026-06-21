@@ -61,7 +61,12 @@ export function adaptLyrics(response: any): TransformedLyrics {
   };
 
   if (response.Type === "Static") {
-    return { ...base, type: "Static", lines: response.Lines ?? [] };
+    const raw = response.Lines ?? response.lines ?? [];
+    const lines = raw.map((l: any) => {
+      if (typeof l === "string") return { text: l };
+      return { text: l.Text ?? l.text ?? "", romanizedText: l.RomanizedText ?? l.romanizedText };
+    });
+    return { ...base, type: "Static", lines };
   }
   if (response.Type === "Line") {
     return {

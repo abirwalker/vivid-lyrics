@@ -74,9 +74,19 @@ function renderCard(lyrics: TransformedLyrics): HTMLDivElement {
 
   const body = document.createElement("div");
   body.className = "VL-LyricsBody";
-  el.appendChild(body);
 
-  renderer = new LyricsRenderer(body, lyrics);
+  if (lyrics.type === "Static") {
+    for (const line of lyrics.lines) {
+      const lineEl = document.createElement("div");
+      lineEl.className = "VL-FS-Line";
+      lineEl.textContent = line.text;
+      body.appendChild(lineEl);
+    }
+  } else {
+    renderer = new LyricsRenderer(body, lyrics);
+  }
+
+  el.appendChild(body);
 
   if (lyrics.songWriters?.length) {
     const credits = document.createElement("div");

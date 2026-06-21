@@ -125,6 +125,14 @@
   }
 }
 
+// Static lyrics lines in card
+#VividLyrics-Card .VL-FS-Line {
+  padding: 4px 0;
+  opacity: 0.85;
+  font-size: clamp(1rem, 4cqw, 1.4rem);
+  line-height: 1.6;
+}
+
 .Lyrics {
   font-family: SpicyLyrics, var(--fallback-fonts, sans-serif);
   font-size: clamp(1rem, 4cqw, 1.4rem);
