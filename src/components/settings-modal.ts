@@ -264,9 +264,9 @@ function buildContent(): HTMLElement {
     "Lyrics": [
       { label: "Auto-scroll", desc: "Scroll to active line", control: makeToggle(s.autoScroll, (v) => set("autoScroll", v)) },
       { label: "Font Size", desc: "Lyrics text size", control: makeSelect([
-        { label: "Small", value: "100" },
-        { label: "Normal", value: "130" },
-        { label: "Large", value: "160" },
+        { label: "Small", value: "90" },
+        { label: "Normal", value: "100" },
+        { label: "Large", value: "120" },
       ], String(s.fontSize), (v) => set("fontSize", Number(v))) },
       { label: "Font", desc: "Lyrics typeface", control: makeSelect([
         { label: "Default", value: "default" },

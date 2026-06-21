@@ -15,6 +15,11 @@ const CloseIcon = `<svg width="16" height="16" viewBox="0 0 16 16" fill="current
 const LyricsIcon = `<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M13.5 1h-11A1.5 1.5 0 0 0 1 2.5v11A1.5 1.5 0 0 0 2.5 15h11a1.5 1.5 0 0 0 1.5-1.5v-11A1.5 1.5 0 0 0 13.5 1Zm-7 11H4V9h2.5v3Zm4 0H8V5h2.5v7Zm2.5 0h-2.5V7H16v5a1 1 0 0 1-1 1Z"/></svg>`;
 
 let card: HTMLDivElement | null = null;
+let header: HTMLDivElement | null = null;
+let title: HTMLDivElement | null = null;
+let showBtn: HTMLButtonElement | null = null;
+let closeBtn: HTMLButtonElement | null = null;
+let body: HTMLDivElement | null = null;
 let renderer: LyricsRenderer | null = null;
 let currentLyrics: TransformedLyrics | null = null;
 let currentUri: string | null = null;
@@ -31,50 +36,52 @@ function getTrackUri(): string | null {
   return Spicetify.Player.data?.item?.uri ?? null;
 }
 
-function renderShowButton(): HTMLDivElement {
-  const el = document.createElement("div");
-  el.id = "VividLyrics-Card";
+function ensureCard(): void {
+  if (card) return;
 
-  const header = document.createElement("div");
+  card = document.createElement("div");
+  card.id = "VividLyrics-Card";
+
+  header = document.createElement("div");
   header.className = "VL-CardHeader";
 
-  const title = document.createElement("div");
+  title = document.createElement("div");
   title.className = "VL-CardTitle";
   title.textContent = "Lyrics";
   header.appendChild(title);
 
-  const btn = document.createElement("button");
-  btn.className = "VL-ShowBtn";
-  btn.textContent = "Show lyrics";
-  btn.addEventListener("click", () => setLyricsVisibility(true));
-  header.appendChild(btn);
+  showBtn = document.createElement("button");
+  showBtn.className = "VL-ShowBtn";
+  showBtn.textContent = "Show lyrics";
+  showBtn.addEventListener("click", () => setLyricsVisibility(true));
+  header.appendChild(showBtn);
 
-  el.appendChild(header);
-  return el;
-}
-
-function renderCard(lyrics: TransformedLyrics): HTMLDivElement {
-  const el = document.createElement("div");
-  el.id = "VividLyrics-Card";
-
-  const header = document.createElement("div");
-  header.className = "VL-CardHeader";
-
-  const title = document.createElement("div");
-  title.className = "VL-CardTitle";
-  title.textContent = "Lyrics";
-  header.appendChild(title);
-
-  const closeBtn = document.createElement("button");
+  closeBtn = document.createElement("button");
   closeBtn.className = "VL-CloseBtn";
   closeBtn.title = "Hide lyrics";
   closeBtn.innerHTML = CloseIcon;
   closeBtn.addEventListener("click", () => setLyricsVisibility(false));
-  header.appendChild(closeBtn);
-  el.appendChild(header);
 
-  const body = document.createElement("div");
+  card.appendChild(header);
+
+  body = document.createElement("div");
   body.className = "VL-LyricsBody";
+  card.appendChild(body);
+}
+
+function destroyRenderer(): void {
+  renderer?.destroy();
+  renderer = null;
+}
+
+function clearBody(): void {
+  if (!body) return;
+  destroyRenderer();
+  body.innerHTML = "";
+}
+
+function populateBody(lyrics: TransformedLyrics): void {
+  if (!body) return;
 
   if (lyrics.type === "Static") {
     const scroll = document.createElement("div");
@@ -86,13 +93,13 @@ function renderCard(lyrics: TransformedLyrics): HTMLDivElement {
       lineEl.textContent = line.text;
       scroll.appendChild(lineEl);
     }
+    body.appendChild(scroll);
     if (lyrics.songWriters?.length) {
       const credits = document.createElement("div");
       credits.className = "VL-Credits";
       credits.textContent = `Written by: ${lyrics.songWriters.join(", ")}`;
-      scroll.appendChild(credits);
+      body.appendChild(credits);
     }
-    body.appendChild(scroll);
   } else {
     renderer = new LyricsRenderer(body, lyrics);
     if (lyrics.songWriters?.length) {
@@ -102,28 +109,6 @@ function renderCard(lyrics: TransformedLyrics): HTMLDivElement {
       renderer.appendCredits(credits);
     }
   }
-
-  el.appendChild(body);
-
-  const footer = document.createElement("div");
-  footer.className = "VL-CardFooter";
-
-  const viewBtn = document.createElement("button");
-  viewBtn.className = "VL-CinemaBtn";
-  viewBtn.title = "Open cinema view";
-  viewBtn.innerHTML = LyricsIcon;
-  viewBtn.addEventListener("click", () => {
-    setPageMode("cinema");
-  });
-  footer.appendChild(viewBtn);
-  el.appendChild(footer);
-
-  return el;
-}
-
-function destroyRenderer(): void {
-  renderer?.destroy();
-  renderer = null;
 }
 
 function setLyricsVisibility(visible: boolean): void {
@@ -132,62 +117,65 @@ function setLyricsVisibility(visible: boolean): void {
 }
 
 function reactToVisibility(): void {
+  ensureCard();
+
   const visible = getVisible();
 
   if (visible) {
+    header!.appendChild(closeBtn!);
+    showBtn!.remove();
+    body!.style.display = "";
+
     if (currentLyrics) {
-      showCard(currentLyrics);
+      clearBody();
+      populateBody(currentLyrics);
     } else {
-      showLoading();
+      clearBody();
+      const loading = document.createElement("div");
+      loading.className = "VL-Line vl-static";
+      loading.textContent = "Loading lyrics...";
+      body!.appendChild(loading);
       const uri = getTrackUri();
       if (uri) loadLyrics(uri);
     }
   } else {
-    showShowButton();
+    header!.appendChild(showBtn!);
+    closeBtn!.remove();
+    clearBody();
+    body!.style.display = "none";
   }
+
+  ensureInDOM();
 }
 
-function showCard(lyrics: TransformedLyrics | null) {
-  destroyRenderer();
-  card?.remove();
-  if (lyrics) {
-    card = renderCard(lyrics);
-  } else {
-    const noLyrics = document.createElement("div");
-    noLyrics.id = "VividLyrics-Card";
-    noLyrics.className = "VL-Line vl-static";
-    noLyrics.textContent = "No lyrics available";
-    card = noLyrics;
-  }
-  const anchor = document.querySelector(ANCHOR) ?? document.querySelector(ANCHOR_FALLBACK);
-  if (anchor) anchor.after(card);
+function showNoLyrics(): void {
+  ensureCard();
+  header!.appendChild(closeBtn!);
+  showBtn!.remove();
+  clearBody();
+  const noLyrics = document.createElement("div");
+  noLyrics.className = "VL-Line vl-static";
+  noLyrics.textContent = "No lyrics available";
+  body!.appendChild(noLyrics);
+  ensureInDOM();
 }
 
-function showShowButton() {
-  destroyRenderer();
-  card?.remove();
-  card = renderShowButton();
-  const anchor = document.querySelector(ANCHOR) ?? document.querySelector(ANCHOR_FALLBACK);
-  if (anchor) anchor.after(card);
-}
-
-function showLoading() {
-  destroyRenderer();
-  card?.remove();
-  const loading = document.createElement("div");
-  loading.id = "VividLyrics-Card";
-  loading.className = "VL-Line vl-static";
-  loading.textContent = "Loading lyrics...";
-  card = loading;
-
+function ensureInDOM(): void {
+  if (!card) return;
+  if (card.parentElement) return;
   const anchor = document.querySelector(ANCHOR) ?? document.querySelector(ANCHOR_FALLBACK);
   if (anchor) anchor.after(card);
 }
 
 function onLyricsUpdate(lyrics: TransformedLyrics | null) {
   currentLyrics = lyrics;
-  if (getVisible()) {
-    showCard(lyrics);
+  if (!getVisible()) return;
+
+  if (lyrics) {
+    clearBody();
+    populateBody(lyrics);
+  } else {
+    showNoLyrics();
   }
 }
 
@@ -198,11 +186,20 @@ async function onSongChange() {
   currentUri = uri;
 
   if (!getVisible()) {
-    showShowButton();
+    reactToVisibility();
     return;
   }
 
-  showLoading();
+  ensureCard();
+  header!.appendChild(closeBtn!);
+  showBtn!.remove();
+  clearBody();
+  const loading = document.createElement("div");
+  loading.className = "VL-Line vl-static";
+  loading.textContent = "Loading lyrics...";
+  body!.appendChild(loading);
+  ensureInDOM();
+
   await loadLyrics(uri);
 }
 
@@ -241,6 +238,11 @@ function observeNPV() {
         destroyRenderer();
         card?.remove();
         card = null;
+        header = null;
+        title = null;
+        showBtn = null;
+        closeBtn = null;
+        body = null;
       };
     } else if (!el && current) {
       if (removeCb) removeCb();

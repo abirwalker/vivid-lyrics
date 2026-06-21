@@ -1,253 +1,264 @@
 @use "variables" as v;
 
 :root {
-  --vl-font-stack: var(--encore-body-font-stack, v.$font);
+    --vl-font-stack: var(--encore-body-font-stack, v.$font);
 }
 .vl-font-spicy {
-  --vl-font-stack: SpicyLyrics, var(--fallback-fonts, sans-serif);
+    --vl-font-stack: SpicyLyrics, var(--fallback-fonts, sans-serif);
 }
 
 #VividLyrics-Card {
-  container-type: inline-size;
-  display: flex;
-  flex-direction: column;
-  max-height: 340px;
-  background-color: var(--background-tinted-base, rgba(0, 0, 0, 0.4)) !important;
-  border-radius: 8px !important;
-  padding: 16px !important;
-  position: relative;
-  overflow: hidden;
-  color: var(--text-base, #fff) !important;
-  font-family: var(--encore-body-font-stack, v.$font) !important;
-  z-index: 2;
-
-  .VL-CardHeader {
-    display: flex !important;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-    flex-shrink: 0;
-    position: relative;
-    z-index: 10;
-  }
-
-  .VL-CardTitle {
-    flex: 1 1 0%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    font-weight: 700;
-    font-size: var(--encore-text-size-base, 14px);
-    color: var(--text-base);
-  }
-
-  .VL-ShowBtn,
-  .VL-CloseBtn,
-  .VL-CinemaBtn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 30px;
-    height: 30px;
-    min-width: 30px;
-    min-height: 30px;
-    padding: 0;
-    background-color: transparent !important;
-    border: none !important;
-    border-radius: 9999px;
-    cursor: pointer;
-    color: var(--text-base);
-    transition: background-color 0.1s ease, transform 0.1s ease;
-    flex-shrink: 0;
-
-    svg {
-      fill: currentColor;
-      flex-shrink: 0;
-    }
-
-    &:hover {
-      background-color: rgba(255, 255, 255, 0.1) !important;
-      transform: scale(1.1);
-    }
-
-    &:active {
-      transform: scale(0.95);
-    }
-  }
-
-  .VL-ShowBtn {
-    width: auto;
-    height: auto;
-    min-width: 0;
-    min-height: 0;
-    padding: 5px 14px;
-    border: 1px solid rgba(255, 255, 255, 0.62) !important;
-    border-radius: 9999px;
-    font-size: 0.8125rem;
-    font-weight: 600;
-    color: var(--text-base, #fff);
-    white-space: nowrap;
-  }
-
-  .VL-LyricsBody {
-    flex: 1;
-    overflow: hidden;
+    container-type: inline-size;
     display: flex;
     flex-direction: column;
-    min-height: 0;
-  }
+    max-height: 340px;
+    background-color: var(
+        --background-tinted-base,
+        rgba(0, 0, 0, 0.4)
+    ) !important;
+    border-radius: 8px !important;
+    padding: 16px !important;
+    position: relative;
+    overflow: hidden;
+    color: var(--text-base, #fff) !important;
+    font-family: var(--encore-body-font-stack, v.$font) !important;
+    z-index: 2;
 
-  .VL-Credits {
-    color: var(--text-base, #fff);
-    font-family: var(--encore-body-font-stack, v.$font);
-    font-size: 0.875rem;
-    line-height: 1.3;
-    opacity: 0.45;
-    margin-top: 8px;
-    padding-top: 8px;
-    padding-bottom: 4px;
-    text-align: left;
-    flex-shrink: 0;
-  }
+    .VL-CardHeader {
+        display: flex !important;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        flex-shrink: 0;
+        height: 25px;
+        min-height: 25px;
+        position: relative;
+        z-index: 10;
+    }
 
-  .VL-CardFooter {
-    display: none;
-  }
+    .VL-CardTitle {
+        flex: 1 1 0%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-weight: 700;
+        font-size: var(--encore-text-size-base, 14px);
+        color: var(--text-base);
+    }
+
+    .VL-ShowBtn,
+    .VL-CloseBtn,
+    .VL-CinemaBtn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 30px;
+        height: 30px;
+        min-width: 30px;
+        min-height: 30px;
+        padding: 0;
+        background-color: transparent !important;
+        border: none !important;
+        border-radius: 9999px;
+        cursor: pointer;
+        color: var(--text-base);
+        transition:
+            background-color 0.1s ease,
+            transform 0.1s ease;
+        flex-shrink: 0;
+
+        svg {
+            fill: currentColor;
+            flex-shrink: 0;
+        }
+
+        &:hover {
+            background-color: rgba(255, 255, 255, 0.1) !important;
+            transform: scale(1.1);
+        }
+
+        &:active {
+            transform: scale(0.95);
+        }
+    }
+
+    .VL-ShowBtn {
+        width: auto;
+        height: auto;
+        min-width: 0;
+        min-height: 0;
+        padding: 3px 15px;
+        border: 1px solid rgba(255, 255, 255, 0.62) !important;
+        border-radius: 9999px;
+        font-size: 0.875rem;
+        font-weight: 600;
+        color: var(--text-base, #fff);
+        white-space: nowrap;
+    }
+
+    .VL-LyricsBody {
+        flex: 1;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+        margin: -16px -16px -16px -16px;
+        padding: 16px 16px 2px 16px;
+    }
+
+    .VL-Credits {
+        color: var(--text-base, #fff);
+        font-family: var(--encore-body-font-stack, v.$font);
+        font-size: 1.125rem;
+        line-height: 1.3;
+        opacity: 0.45;
+        margin-top: 1cqw;
+        padding-top: 8px;
+        padding-bottom: 8px;
+        text-align: left;
+        flex-shrink: 0;
+    }
+
+    .VL-CardFooter {
+        display: none;
+    }
 }
 
 // LyricsRenderer styles (spicy-card compatible)
 .LyricsScrollContainer {
-  overflow-y: auto;
-  overflow-x: hidden;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
-  position: relative;
-  container-type: inline-size;
+    overflow-y: auto;
+    overflow-x: hidden;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    position: relative;
+    container-type: inline-size;
 
-  &::-webkit-scrollbar {
-    display: none;
-  }
+    &::-webkit-scrollbar {
+        display: none;
+    }
 }
 
 // Scroll container fills card body
 #VividLyrics-Card .LyricsScrollContainer {
-  flex: 1;
-  min-height: 0;
+    flex: 1;
+    min-height: 0;
 }
 
 // Static lyrics lines
 .VL-FS-Line {
-  padding: 4px 0;
-  opacity: 0.85;
-  font-family: var(--vl-font-stack, sans-serif);
-  font-size: calc(clamp(1rem, 4cqw, 1.4rem) * var(--vl-font-size, 1));
-  line-height: 1.6;
+    padding: 4px 0;
+    opacity: 0.85;
+    font-family: var(--vl-font-stack, sans-serif);
+    font-size: calc(clamp(1.85rem, 7cqw, 3.5rem) * var(--vl-font-size, 1));
+    line-height: 1.6;
 }
 .Lyrics {
-  font-family: var(--vl-font-stack, sans-serif);
-  font-size: calc(clamp(1rem, 4cqw, 1.4rem) * var(--vl-font-size, 1));
-  line-height: 1.8;
-  padding: 0 4px;
+    font-family: var(--vl-font-stack, sans-serif);
+    font-size: calc(clamp(1.85rem, 7cqw, 3.5rem) * var(--vl-font-size, 1));
+    line-height: 1.1818181818;
+    padding: 0 4px;
 }
 
 .VocalsGroup {
-  display: block;
-  width: 100%;
-  background: none !important;
-  border: none !important;
-  padding: 0 !important;
-  margin: 0 !important;
-  text-align: inherit;
-  cursor: pointer;
-  font: inherit;
+    display: block;
+    width: 100%;
+    background: none !important;
+    border: none !important;
+    padding: 0 !important;
+    margin: 1cqw 0 !important;
+    text-align: inherit;
+    cursor: pointer;
+    font: inherit;
+    line-height: 1.1818181818;
 
-  &:hover .Vocals.Lead {
-    opacity: 0.75;
-  }
+    &:hover .Vocals.Lead {
+        opacity: 1;
+    }
 }
 
 .Vocals {
-  padding: 0;
-  margin: 0;
-  font-size: inherit;
-  font-weight: 700;
+    padding: 0;
+    margin: 0;
+    font-size: inherit;
+    font-weight: 700;
+    max-width: 96%;
 
-  &.Lead {
-    opacity: 0.51;
-    transition: opacity 0.25s cubic-bezier(0.61, 1, 0.88, 1);
+    &.Lead {
+        opacity: 0.51;
+        transition: opacity 0.25s cubic-bezier(0.61, 1, 0.88, 1);
 
-    &.Active {
-      opacity: 1;
+        &.Active {
+            opacity: 1;
+        }
+
+        &.Sung {
+            opacity: 0.497;
+        }
     }
 
-    &.Sung {
-      opacity: 0.497;
-    }
-  }
+    &.Background {
+        opacity: 0.275;
+        font-size: calc(inherit * 0.75);
+        font-weight: 500;
 
-  &.Background {
-    opacity: 0.275;
-    font-size: calc(inherit * 0.75);
-    font-weight: 500;
+        &.Active {
+            opacity: 0.8;
+        }
 
-    &.Active {
-      opacity: 0.8;
+        &.Sung {
+            opacity: 0.332;
+        }
     }
-
-    &.Sung {
-      opacity: 0.332;
-    }
-  }
 }
 
 .Lyric {
-  display: inline;
+    display: inline;
 
-  &.Synced {
+    &.Synced {
+        background-image: linear-gradient(
+            90deg,
+            rgba(255, 255, 255, 0.85) var(--line-progress, 0%),
+            rgba(255, 255, 255, 0.5) var(--line-progress-2, 0%)
+        );
+        background-clip: text;
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+    }
+
+    &.Static {
+        color: rgba(255, 255, 255, 0.9);
+    }
+
+    &.Line {
+        display: block;
+        white-space: pre-wrap;
+    }
+}
+
+.Word {
+    display: inline;
+
+    &::after {
+        content: " ";
+    }
+}
+
+.Syllable {
+    display: inline;
     background-image: linear-gradient(
-      90deg,
-      rgba(255, 255, 255, 0.9) var(--line-progress, 0%),
-      rgba(255, 255, 255, 0.4) var(--line-progress-2, 0%)
+        90deg,
+        rgba(255, 255, 255, 0.85) var(--char-progress, 0%),
+        rgba(255, 255, 255, 0.5) var(--char-progress-2, 0%)
     );
     background-clip: text;
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
-  }
-
-  &.Static {
-    color: rgba(255, 255, 255, 0.9);
-  }
-
-  &.Line {
-    display: block;
-    white-space: pre-wrap;
-  }
-}
-
-.Word {
-  display: inline;
-
-  &::after {
-    content: " ";
-  }
-}
-
-.Syllable {
-  display: inline;
-  background-image: linear-gradient(
-    90deg,
-    rgba(255, 255, 255, 0.9) var(--char-progress, 0%),
-    rgba(255, 255, 255, 0.4) var(--char-progress-2, 0%)
-  );
-  background-clip: text;
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
 }
 
 .Interlude {
-  display: none;
-  text-align: center;
-  opacity: 0.3;
-  padding: 8px 0;
-  font-size: 0.8em;
+    display: none;
+    text-align: center;
+    opacity: 0.3;
+    padding: 8px 0;
+    font-size: 0.8em;
 }
