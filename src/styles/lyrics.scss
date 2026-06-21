@@ -1,5 +1,12 @@
 @use "variables" as v;
 
+:root {
+  --vl-font-stack: var(--encore-body-font-stack, v.$font);
+}
+.vl-font-spicy {
+  --vl-font-stack: SpicyLyrics, var(--fallback-fonts, sans-serif);
+}
+
 #VividLyrics-Card {
   container-type: inline-size;
   display: flex;
@@ -132,11 +139,12 @@
 .VL-FS-Line {
   padding: 4px 0;
   opacity: 0.85;
+  font-family: var(--vl-font-stack, sans-serif);
   font-size: calc(clamp(1rem, 4cqw, 1.4rem) * var(--vl-font-size, 1));
   line-height: 1.6;
 }
 .Lyrics {
-  font-family: SpicyLyrics, var(--fallback-fonts, sans-serif);
+  font-family: var(--vl-font-stack, sans-serif);
   font-size: calc(clamp(1rem, 4cqw, 1.4rem) * var(--vl-font-size, 1));
   line-height: 1.8;
   padding: 0 4px;

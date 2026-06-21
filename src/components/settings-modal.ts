@@ -1,4 +1,60 @@
-import { getSettings, set, resetSettings, type Settings } from "../stores/settings";
+import { getSettings, get, set, resetSettings, type Settings } from "../stores/settings";
+import storage from "../utils/storage";
+
+const FONT_CSS_URL = "https://fonts.spikerko.org/spicy-lyrics/source.css";
+const CACHE_KEY = "spicy-font-css";
+let injected = false;
+
+async function ensureSpicyFont(): Promise<void> {
+  if (injected) return;
+
+  const cached = storage.get(CACHE_KEY);
+  if (cached) {
+    injectFontCSS(cached);
+    injected = true;
+    return;
+  }
+
+  const cssRes = await fetch(FONT_CSS_URL);
+  const rawCSS = await cssRes.text();
+
+  const fontMatches = [...rawCSS.matchAll(/url\(([^)]+)\)/g)];
+  let resolved = rawCSS;
+
+  for (const match of fontMatches) {
+    const relativePath = match[1];
+    const absoluteURL = new URL(relativePath, FONT_CSS_URL).href;
+    const fontRes = await fetch(absoluteURL);
+    const buffer = await fontRes.arrayBuffer();
+    const base64 = btoa(
+      new Uint8Array(buffer).reduce((s, b) => s + String.fromCharCode(b), "")
+    );
+    const dataURL = `data:font/woff2;base64,${base64}`;
+    resolved = resolved.replace(match[0], `url(${dataURL})`);
+  }
+
+  storage.set(CACHE_KEY, resolved);
+  injectFontCSS(resolved);
+  injected = true;
+}
+
+function injectFontCSS(css: string): void {
+  const style = document.createElement("style");
+  style.textContent = css;
+  document.head.appendChild(style);
+}
+
+function applyFont(font: Settings["fontFamily"]): void {
+  document.documentElement.classList.remove("vl-font-default", "vl-font-spicy");
+  document.documentElement.classList.add(`vl-font-${font}`);
+  if (font === "spicy") {
+    ensureSpicyFont();
+  }
+}
+
+export function applyStoredFont(): void {
+  applyFont(get("fontFamily"));
+}
 
 let overlay: HTMLDivElement | null = null;
 let isOpen = false;
@@ -212,6 +268,13 @@ function buildContent(): HTMLElement {
         { label: "Normal", value: "130" },
         { label: "Large", value: "160" },
       ], String(s.fontSize), (v) => set("fontSize", Number(v))) },
+      { label: "Font", desc: "Lyrics typeface", control: makeSelect([
+        { label: "Default", value: "default" },
+        { label: "Spicy", value: "spicy" },
+      ], s.fontFamily, (v) => {
+        set("fontFamily", v as Settings["fontFamily"]);
+        applyFont(v as Settings["fontFamily"]);
+      }) },
     ],
     "Background": [
       { label: "Mode", desc: "Background style", control: makeSelect([

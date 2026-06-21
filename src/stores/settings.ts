@@ -9,6 +9,7 @@ export type Settings = {
   blurEnabled: boolean;
   romanization: boolean;
   fontSize: number;
+  fontFamily: "default" | "spicy";
 };
 
 const defaults: Settings = {
@@ -20,6 +21,7 @@ const defaults: Settings = {
   blurEnabled: true,
   romanization: false,
   fontSize: 100,
+  fontFamily: "default",
 };
 
 let current: Settings = { ...defaults };
