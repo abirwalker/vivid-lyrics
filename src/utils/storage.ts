@@ -3,7 +3,7 @@ const PREFIX = "VividLyrics/";
 export default {
   get(key: string): string | null {
     try {
-      return Spicetify.LocalStorage.get(PREFIX + key);
+      return localStorage.getItem(PREFIX + key);
     } catch {
       return null;
     }
@@ -11,7 +11,7 @@ export default {
 
   set(key: string, value: string): void {
     try {
-      Spicetify.LocalStorage.set(PREFIX + key, value);
+      localStorage.setItem(PREFIX + key, value);
     } catch {
       // storage full or blocked
     }
@@ -19,7 +19,7 @@ export default {
 
   remove(key: string): void {
     try {
-      Spicetify.LocalStorage.set(PREFIX + key, "");
+      localStorage.removeItem(PREFIX + key);
     } catch {
       // ignore
     }

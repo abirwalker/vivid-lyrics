@@ -10,11 +10,12 @@ const memoryCache = new Map<string, CacheEntry>();
 
 function storageGet(trackId: string): CacheEntry | null {
   try {
-    const raw = Spicetify.LocalStorage.get(CACHE_PREFIX + trackId);
+    const key = CACHE_PREFIX + trackId;
+    const raw = localStorage.getItem(key);
     if (!raw) return null;
     const entry: CacheEntry = JSON.parse(raw);
     if (Date.now() - entry.fetchedAt > TTL_MS) {
-      Spicetify.LocalStorage.set(CACHE_PREFIX + trackId, "");
+      localStorage.removeItem(key);
       return null;
     }
     return entry;
@@ -25,7 +26,8 @@ function storageGet(trackId: string): CacheEntry | null {
 
 function storageSet(trackId: string, entry: CacheEntry): void {
   try {
-    Spicetify.LocalStorage.set(CACHE_PREFIX + trackId, JSON.stringify(entry));
+    const key = CACHE_PREFIX + trackId;
+    localStorage.setItem(key, JSON.stringify(entry));
   } catch {}
 }
 
