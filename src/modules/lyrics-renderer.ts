@@ -1,4 +1,5 @@
 import type { TransformedLyrics } from "../lyrics/types";
+import { get } from "../stores/settings";
 
 type LyricState = "Idle" | "Active" | "Sung";
 
@@ -261,6 +262,8 @@ export default class LyricsRenderer {
   }
 
   private scrollToActive(instant?: boolean): void {
+    if (!get("autoScroll")) return;
+
     const activeIdx = this.lines.findIndex((l) => l.state === "Active");
     if (activeIdx === this.lastActiveIdx && !instant) return;
     this.lastActiveIdx = activeIdx;
@@ -292,5 +295,9 @@ export default class LyricsRenderer {
     this.destroyed = true;
     cancelAnimationFrame(this.rafId);
     this.scrollContainer.remove();
+  }
+
+  public appendCredits(creditsEl: HTMLElement): void {
+    this.lyricsContainer.appendChild(creditsEl);
   }
 }

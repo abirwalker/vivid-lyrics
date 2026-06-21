@@ -76,24 +76,32 @@ function renderCard(lyrics: TransformedLyrics): HTMLDivElement {
   body.className = "VL-LyricsBody";
 
   if (lyrics.type === "Static") {
+    const scroll = document.createElement("div");
+    scroll.className = "LyricsScrollContainer";
     for (const line of lyrics.lines) {
       const lineEl = document.createElement("div");
       lineEl.className = "VL-FS-Line";
       lineEl.textContent = line.text;
-      body.appendChild(lineEl);
+      scroll.appendChild(lineEl);
     }
+    if (lyrics.songWriters?.length) {
+      const credits = document.createElement("div");
+      credits.className = "VL-Credits";
+      credits.textContent = `Written by: ${lyrics.songWriters.join(", ")}`;
+      scroll.appendChild(credits);
+    }
+    body.appendChild(scroll);
   } else {
     renderer = new LyricsRenderer(body, lyrics);
+    if (lyrics.songWriters?.length) {
+      const credits = document.createElement("div");
+      credits.className = "VL-Credits";
+      credits.textContent = `Written by: ${lyrics.songWriters.join(", ")}`;
+      renderer.appendCredits(credits);
+    }
   }
 
   el.appendChild(body);
-
-  if (lyrics.songWriters?.length) {
-    const credits = document.createElement("div");
-    credits.className = "VL-Credits";
-    credits.textContent = `Written by: ${lyrics.songWriters.join(", ")}`;
-    body.appendChild(credits);
-  }
 
   const footer = document.createElement("div");
   footer.className = "VL-CardFooter";

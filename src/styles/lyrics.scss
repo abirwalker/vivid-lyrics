@@ -84,14 +84,10 @@
 
   .VL-LyricsBody {
     flex: 1;
-    overflow-y: auto;
-    overflow-x: hidden;
-    scrollbar-width: none;
-    -ms-overflow-style: none;
-
-    &::-webkit-scrollbar {
-      display: none;
-    }
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
   }
 
   .VL-Credits {
@@ -125,14 +121,19 @@
   }
 }
 
-// Static lyrics lines in card
-#VividLyrics-Card .VL-FS-Line {
+// Scroll container fills card body
+#VividLyrics-Card .LyricsScrollContainer {
+  flex: 1;
+  min-height: 0;
+}
+
+// Static lyrics lines
+.VL-FS-Line {
   padding: 4px 0;
   opacity: 0.85;
   font-size: clamp(1rem, 4cqw, 1.4rem);
   line-height: 1.6;
 }
-
 .Lyrics {
   font-family: SpicyLyrics, var(--fallback-fonts, sans-serif);
   font-size: clamp(1rem, 4cqw, 1.4rem);
