@@ -10,6 +10,7 @@ export type Settings = {
   romanization: boolean;
   fontSize: number;
   fontFamily: "default" | "spicy";
+  hideNativeLyrics: boolean;
 };
 
 const defaults: Settings = {
@@ -22,6 +23,7 @@ const defaults: Settings = {
   romanization: false,
   fontSize: 100,
   fontFamily: "default",
+  hideNativeLyrics: true,
 };
 
 let current: Settings = { ...defaults };

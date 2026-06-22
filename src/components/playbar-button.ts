@@ -3,11 +3,13 @@ import { setPageMode, getPageMode } from "../stores/page";
 import "../styles/playbar.scss";
 
 const EXTRA_CONTROLS_SEL = ".main-nowPlayingBar-extraControls";
+const NATIVE_FULLSCREEN_SEL = 'button[data-testid="fullscreen-mode-button"]';
 const VIVID_ROUTE = "/vivid-lyrics";
-const CinemaIcon = `<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M1 3h14v10H1V3zm1 1v8h12V4H2zm2 2h2v4H4V6zm4 0h2v4H8V6z"/></svg>`;
+const FullscreenIcon = `<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M6.53 9.47a.75.75 0 0 1 0 1.06l-2.72 2.72h1.94a.75.75 0 0 1 0 1.5H1.75v-4a.75.75 0 0 1 1.5 0v1.94l2.72-2.72a.75.75 0 0 1 1.06 0Zm2.94-2.94a.75.75 0 0 1 0-1.06l2.72-2.72h-1.94a.75.75 0 1 1 0-1.5h4v4a.75.75 0 0 1-1.5 0V3.31l-2.72 2.72a.75.75 0 0 1-1.06 0Z"/></svg>`;
 
 let injected = false;
 let vividBtn: HTMLButtonElement | null = null;
+let nativeFsObserver: MutationObserver | null = null;
 
 function isVividActive(): boolean {
   const loc = (Spicetify.Platform.History as any).location;
@@ -17,6 +19,11 @@ function isVividActive(): boolean {
 function updateVividActive(): void {
   if (!vividBtn) return;
   vividBtn.classList.toggle("active", isVividActive());
+}
+
+function hideNativeFullscreen(): void {
+  const btn = document.querySelector<HTMLElement>(NATIVE_FULLSCREEN_SEL);
+  if (btn) btn.style.display = "none";
 }
 
 function makeBtn(icon: string, title: string, onClick: () => void): HTMLButtonElement {
@@ -49,10 +56,18 @@ function injectButtons(): void {
 
   container.prepend(vividBtn);
 
-  container.appendChild(makeBtn(CinemaIcon, "Vivid Cinema", () => {
+  container.appendChild(makeBtn(FullscreenIcon, "Vivid Cinema", () => {
     const mode = getPageMode();
-    setPageMode(mode === "page" ? "cinema" : "page");
+    if (mode === "fullscreen" || mode === "cinema") {
+      setPageMode("page");
+    } else {
+      setPageMode("cinema");
+    }
   }));
+
+  hideNativeFullscreen();
+  nativeFsObserver = new MutationObserver(hideNativeFullscreen);
+  nativeFsObserver.observe(container, { childList: true, subtree: true });
 }
 
 function observePlaybar(): void {

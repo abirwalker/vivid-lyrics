@@ -55,6 +55,17 @@ function applyFont(font: Settings["fontFamily"]): void {
 
 export function applyStoredFont(): void {
   applyFont(get("fontFamily"));
+  applyNativeLyricsVisibility(get("hideNativeLyrics"));
+}
+
+function applyNativeLyricsVisibility(hide: boolean): void {
+  let style = document.getElementById("VL-native-lyrics-css") as HTMLStyleElement;
+  if (!style) {
+    style = document.createElement("style");
+    style.id = "VL-native-lyrics-css";
+    document.head.appendChild(style);
+  }
+  style.textContent = hide ? `.main-nowPlayingBar-lyricsButton { display: none !important; }` : "";
 }
 
 let overlay: HTMLDivElement | null = null;
@@ -156,6 +167,12 @@ function buildContent(): HTMLElement {
         { label: "Dynamic", value: "dynamic" },
         { label: "Color", value: "color" },
       ], s.backgroundMode, (v) => set("backgroundMode", v as Settings["backgroundMode"])) },
+    ],
+    "Interface": [
+      { label: "Hide Spotify Lyrics Button", desc: "Hide the native lyrics button in the playbar", control: makeToggle(s.hideNativeLyrics, (v) => {
+        set("hideNativeLyrics", v);
+        applyNativeLyricsVisibility(v);
+      }) },
     ],
     "Coming Soon": [
       { label: "Glow Intensity", desc: "Strength of the glow effect", control: makeSoon() },
