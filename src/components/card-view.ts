@@ -88,19 +88,20 @@ function populateBody(lyrics: TransformedLyrics): void {
   if (lyrics.type === "Static") {
     const scroll = document.createElement("div");
     scroll.className = "LyricsScrollContainer";
+    scroll.style.setProperty("--vl-font-size", String(get("fontSize") / 100));
     for (const line of lyrics.lines) {
       const lineEl = document.createElement("div");
       lineEl.className = "VL-FS-Line";
       lineEl.textContent = line.text;
       scroll.appendChild(lineEl);
     }
-    body.appendChild(scroll);
     if (lyrics.songWriters?.length) {
       const credits = document.createElement("div");
       credits.className = "VL-Credits";
       credits.textContent = `Written by: ${lyrics.songWriters.join(", ")}`;
-      body.appendChild(credits);
+      scroll.appendChild(credits);
     }
+    body.appendChild(scroll);
   } else {
     renderer = new LyricsRenderer(body, lyrics);
     if (lyrics.songWriters?.length) {

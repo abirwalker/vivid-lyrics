@@ -11,17 +11,24 @@
     }
 }
 
-#VividLyrics-Card .LyricsScrollContainer {
+#VividLyrics-Card .LyricsScrollContainer,
+#VividLyrics-MainPage .LyricsScrollContainer {
     flex: 1;
     min-height: 0;
 }
 
+#VividLyrics-MainPage .LyricsScrollContainer {
+    padding: 40px 0 10em;
+}
+
 .VL-FS-Line {
-    padding: 4px 0;
-    opacity: 0.85;
+    padding: 0;
+    margin: 1cqw 0;
+    opacity: 0.51;
     font-family: var(--vl-font-stack, sans-serif);
     font-size: calc(clamp(1.85rem, 7cqw, 3.5rem) * var(--vl-font-size, 1));
-    line-height: 1.6;
+    font-weight: 700;
+    line-height: 1.1818181818;
 }
 
 .Lyrics {

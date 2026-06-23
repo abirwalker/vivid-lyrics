@@ -7,6 +7,7 @@ import LyricsRenderer from "../modules/lyrics-renderer";
 
 const BASE_ROUTE = "/vivid-lyrics";
 let pageContainer: HTMLDivElement | null = null;
+let hiddenSiblings: HTMLElement[] = [];
 let isOpen = false;
 let lyricsUnsub: (() => void) | null = null;
 let activeRenderer: LyricsRenderer | null = null;
@@ -93,6 +94,13 @@ function open(): void {
     <div class="VividLyrics-PageContent">Loading...</div>
   `;
 
+  hiddenSiblings = Array.from(pageRoot.children).filter(
+    (el) => el !== pageContainer
+  ) as HTMLElement[];
+  for (const el of hiddenSiblings) {
+    el.style.display = "none";
+  }
+
   pageRoot.prepend(pageContainer);
   pageRoot.scrollTop = 0;
 
@@ -126,6 +134,11 @@ function closePage(): void {
 
   pageContainer?.remove();
   pageContainer = null;
+
+  for (const el of hiddenSiblings) {
+    el.style.display = "";
+  }
+  hiddenSiblings = [];
 }
 
 function onHistoryEvent(event: any): void {

@@ -6,3 +6,12 @@
 .vl-font-spicy {
     --vl-font-stack: SpicyLyrics, var(--fallback-fonts, sans-serif);
 }
+/* Nuke the empty ad placeholder container */
+.ScclvBC0NsMgQLQC,
+div[data-testid="test-ref-div"] {
+    display: none !important;
+    height: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    overflow: hidden !important;
+}
