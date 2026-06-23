@@ -3,37 +3,9 @@
     height: 100%;
     display: flex;
     flex-direction: column;
-    max-width: 800px;
-    margin: 0 auto;
-    padding: 0 5em;
     color: var(--text-base);
     overflow: hidden;
-}
-
-.VividLyrics-PageTitle {
-    font-size: 24px;
-    font-weight: 700;
-    margin-bottom: 16px;
-}
-
-.VividLyrics-Toolbar {
-    display: flex;
-    gap: 8px;
-    margin-bottom: 24px;
-
-    button {
-        background: var(--spice-button, rgba(255, 255, 255, 0.1));
-        border: none;
-        color: var(--text-base);
-        padding: 6px 12px;
-        border-radius: 4px;
-        cursor: pointer;
-        font-size: 12px;
-
-        &:hover {
-            background: var(--spice-button-pressed, rgba(255, 255, 255, 0.2));
-        }
-    }
+    position: relative;
 }
 
 .VividLyrics-PageContent {
@@ -44,6 +16,11 @@
     line-height: 2;
     font-size: 16px;
     position: relative;
+    max-width: 800px;
+    width: 100%;
+    margin: 0 auto;
+    padding: 0 24px;
+    container-type: inline-size;
 }
 
 .VividLyrics-Credits {
@@ -51,6 +28,57 @@
     padding-top: 24px;
     font-size: 1.125rem;
     opacity: 0.4;
+}
+
+.VL-MainControls {
+    position: absolute;
+    bottom: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 100;
+    display: flex;
+    gap: 6px;
+    padding: 6px 10px;
+    background: rgba(28, 28, 28, 0.75);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-radius: 9999px;
+    opacity: 0;
+    transition: opacity 0.3s;
+
+    #VividLyrics-MainPage:hover & {
+        opacity: 1;
+    }
+}
+
+.VL-MainControlBtn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    background: transparent;
+    border: none;
+    border-radius: 9999px;
+    color: rgba(255, 255, 255, 0.7);
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s, transform 0.15s;
+
+    svg {
+        width: 16px;
+        height: 16px;
+    }
+
+    &:hover {
+        background: rgba(255, 255, 255, 0.12);
+        color: #fff;
+        transform: scale(1.1);
+    }
+
+    &:active {
+        transform: scale(0.95);
+    }
 }
 
 .VL-StatusText {

@@ -20,6 +20,9 @@ type LineInfo = {
   isSyllableType: boolean;
 };
 
+const BLURMAP = [0, 1, 2, 3, 4, 5];
+const USER_SCROLL_RESUME_MS = 3000;
+
 function clamp(v: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, v));
 }
@@ -33,6 +36,9 @@ export default class LyricsRenderer {
   private destroyed = false;
   private lyricsEnded = false;
   private lastActiveIdx = -1;
+
+  private autoScrollBlocked = false;
+  private userScrollTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(
     parentContainer: HTMLElement,
@@ -48,6 +54,8 @@ export default class LyricsRenderer {
     this.applyFontSize();
     this.buildLines();
     parentContainer.appendChild(this.scrollContainer);
+
+    this.watchUserScroll();
 
     if (lyrics.type !== "Static") {
       this.startLoop();
@@ -113,7 +121,6 @@ export default class LyricsRenderer {
       if (isSyllableType) {
         const syllables: any[] = item.Lead.Syllables;
 
-        // Group syllables into words (lucid-lyrics logic)
         const words: any[][] = [];
         let currentWord: any[] | null = null;
         for (let i = 0; i < syllables.length; i++) {
@@ -182,6 +189,23 @@ export default class LyricsRenderer {
     }
   }
 
+  private watchUserScroll(): void {
+    this.scrollContainer.addEventListener("wheel", () => this.onUserScroll(), { passive: true });
+    this.scrollContainer.addEventListener("touchmove", () => this.onUserScroll(), { passive: true });
+  }
+
+  private onUserScroll(): void {
+    this.autoScrollBlocked = true;
+    this.scrollContainer.classList.add("UserScrolling");
+
+    if (this.userScrollTimer) clearTimeout(this.userScrollTimer);
+    this.userScrollTimer = setTimeout(() => {
+      this.autoScrollBlocked = false;
+      this.scrollContainer.classList.remove("UserScrolling");
+      this.scrollToActive();
+    }, USER_SCROLL_RESUME_MS);
+  }
+
   private startLoop(): void {
     const tick = () => {
       if (this.destroyed) return;
@@ -197,8 +221,10 @@ export default class LyricsRenderer {
 
       this.lyricsEnded = currentTimestamp >= ((this.lyrics as any).endTime ?? Infinity);
 
+      this.updateBlur();
+
       if (skipped) {
-        this.scrollToActive(true);
+        this.forceToActive();
       }
 
       this.lastTimestamp = currentTimestamp;
@@ -225,7 +251,6 @@ export default class LyricsRenderer {
       this.evaluateClass(line);
     }
 
-    // Update syllable gradient progress
     if (line.isSyllableType && line.syllables.length > 0 && line.duration > 0) {
       const timeScale = clamp(relativeTime / line.duration, 0, 1);
 
@@ -267,6 +292,51 @@ export default class LyricsRenderer {
     }
   }
 
+  private updateBlur(): void {
+    if (this.lyrics.type === "Static") return;
+
+    let activeStart = -1;
+    let activeEnd = -1;
+
+    for (let i = 0; i < this.lines.length; i++) {
+      if (this.lines[i].state === "Active") {
+        if (activeStart === -1) activeStart = i;
+        activeEnd = i;
+      }
+    }
+
+    if (activeStart === -1 && this.lastActiveIdx >= 0) {
+      activeStart = this.lastActiveIdx;
+      activeEnd = this.lastActiveIdx;
+    }
+
+    if (activeStart >= 0) {
+      this.lastActiveIdx = activeStart;
+    }
+
+    const reset = this.autoScrollBlocked;
+
+    for (let i = 0; i < this.lines.length; i++) {
+      const line = this.lines[i];
+
+      if (reset || activeStart === -1) {
+        line.vocals.style.setProperty("--text-blur", "0px");
+        continue;
+      }
+
+      let distance = BLURMAP.length - 1;
+      if (i < activeStart) {
+        distance = Math.min(activeStart - i, BLURMAP.length - 1);
+      } else if (i > activeEnd) {
+        distance = Math.min(i - activeEnd, BLURMAP.length - 1);
+      } else {
+        distance = 0;
+      }
+
+      line.vocals.style.setProperty("--text-blur", `${BLURMAP[distance]}px`);
+    }
+  }
+
   private scrollToActive(instant?: boolean): void {
     if (!get("autoScroll")) return;
 
@@ -297,9 +367,16 @@ export default class LyricsRenderer {
     }
   }
 
+  private forceToActive(): void {
+    this.autoScrollBlocked = false;
+    this.scrollContainer.classList.remove("UserScrolling");
+    this.scrollToActive(true);
+  }
+
   public destroy(): void {
     this.destroyed = true;
     cancelAnimationFrame(this.rafId);
+    if (this.userScrollTimer) clearTimeout(this.userScrollTimer);
     this.scrollContainer.remove();
   }
 

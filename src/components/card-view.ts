@@ -65,6 +65,10 @@ function ensureCard(): void {
 
   card.appendChild(header);
 
+  if (get("centeredTextCard")) {
+    card.classList.add("vl-card-centered");
+  }
+
   body = document.createElement("div");
   body.className = "VL-LyricsBody";
   body.style.setProperty("--vl-font-size", String(get("fontSize") / 100));

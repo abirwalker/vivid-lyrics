@@ -6,8 +6,14 @@ import { whyamidoingthis, getNoLyricsMessage } from "../utils/no-lyrics-messages
 import LyricsRenderer from "../modules/lyrics-renderer";
 import "../styles/fullscreen.scss";
 
+const CinemaIcon = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="2" y1="7" x2="7" y2="7"/><line x1="2" y1="17" x2="7" y2="17"/><line x1="17" y1="7" x2="22" y2="7"/><line x1="17" y1="17" x2="22" y2="17"/></svg>`;
+const FullscreenIcon = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>`;
+const CloseFullscreenIcon = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="14" y1="10" x2="21" y2="3"/><line x1="3" y1="21" x2="10" y2="14"/></svg>`;
+const CloseIcon = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`;
+
 let portal: HTMLDivElement | null = null;
 let content: HTMLDivElement | null = null;
+let controlsContainer: HTMLDivElement | null = null;
 let activeRenderer: LyricsRenderer | null = null;
 
 function renderLyrics(lyrics: TransformedLyrics | null): void {
@@ -34,6 +40,12 @@ function renderLyrics(lyrics: TransformedLyrics | null): void {
       p.textContent = line.text;
       p.className = "VL-FS-Line";
       lyricsEl.appendChild(p);
+    }
+    if (lyrics.songWriters?.length) {
+      const credits = document.createElement("div");
+      credits.className = "VL-FS-Credits";
+      credits.textContent = `Written by: ${lyrics.songWriters.join(", ")}`;
+      lyricsEl.appendChild(credits);
     }
     return;
   }
@@ -80,11 +92,37 @@ function onFullscreenChange(): void {
   }
 }
 
+function updateControls(): void {
+  if (!controlsContainer) return;
+  const mode = getPageMode();
+  const pos = get("controlsPosition");
+  controlsContainer.innerHTML = "";
+  controlsContainer.classList.toggle("VL-FS-Controls-Bottom", pos === "bottom");
+  controlsContainer.classList.toggle("VL-FS-Controls-Top", pos !== "bottom");
+
+  const fullscreenBtn = document.createElement("button");
+  fullscreenBtn.className = "VL-FS-ControlBtn";
+  fullscreenBtn.title = mode === "fullscreen" ? "Cinema Mode" : "Fullscreen";
+  fullscreenBtn.innerHTML = mode === "fullscreen" ? CloseFullscreenIcon : FullscreenIcon;
+  fullscreenBtn.addEventListener("click", () => {
+    setPageMode(mode === "fullscreen" ? "cinema" : "fullscreen");
+  });
+  controlsContainer.appendChild(fullscreenBtn);
+
+  const closeBtn = document.createElement("button");
+  closeBtn.className = "VL-FS-ControlBtn";
+  closeBtn.title = "Close";
+  closeBtn.innerHTML = CloseIcon;
+  closeBtn.addEventListener("click", handleClose);
+  controlsContainer.appendChild(closeBtn);
+}
+
 function show(): void {
   if (!portal) return;
   portal.style.display = "block";
   document.addEventListener("keydown", onKeyDown);
   document.addEventListener("fullscreenchange", onFullscreenChange);
+  updateControls();
   renderLyrics(getLyrics());
 }
 
@@ -130,15 +168,13 @@ export function setupFullscreen(): void {
   content = document.createElement("div");
   content.className = "VividLyrics-FullscreenContent";
 
-  const closeBtn = document.createElement("button");
-  closeBtn.className = "VL-FS-CloseBtn";
-  closeBtn.innerHTML = "&times;";
-  closeBtn.addEventListener("click", handleClose);
+  controlsContainer = document.createElement("div");
+  controlsContainer.className = "VL-FS-Controls";
 
   const lyricsDiv = document.createElement("div");
   lyricsDiv.className = "VL-FS-Lyrics";
 
-  content.appendChild(closeBtn);
+  content.appendChild(controlsContainer);
   content.appendChild(lyricsDiv);
   portal.appendChild(content);
   document.body.appendChild(portal);

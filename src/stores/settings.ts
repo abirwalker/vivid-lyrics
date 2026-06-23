@@ -11,6 +11,9 @@ export type Settings = {
   fontSize: number;
   fontFamily: "default" | "spicy";
   hideNativeLyrics: boolean;
+  controlsPosition: "top" | "bottom";
+  centeredText: boolean;
+  centeredTextCard: boolean;
 };
 
 const defaults: Settings = {
@@ -24,6 +27,9 @@ const defaults: Settings = {
   fontSize: 100,
   fontFamily: "default",
   hideNativeLyrics: true,
+  controlsPosition: "top",
+  centeredText: false,
+  centeredTextCard: false,
 };
 
 let current: Settings = { ...defaults };

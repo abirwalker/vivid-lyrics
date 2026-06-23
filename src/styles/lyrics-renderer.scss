@@ -9,6 +9,10 @@
     &::-webkit-scrollbar {
         display: none;
     }
+
+    &.UserScrolling .Vocals:not(:is(.Active)) .Synced {
+        --text-blur: 0px !important;
+    }
 }
 
 #VividLyrics-Card .LyricsScrollContainer,
@@ -29,6 +33,18 @@
     font-size: calc(clamp(1.85rem, 7cqw, 3.5rem) * var(--vl-font-size, 1));
     font-weight: 700;
     line-height: 1.1818181818;
+}
+
+html.vl-centered-text #VividLyrics-MainPage .Lyrics,
+html.vl-centered-text .VividLyrics-FullscreenContent .Lyrics,
+#VividLyrics-Card.vl-card-centered .Lyrics {
+    text-align: center;
+}
+
+html.vl-centered-text #VividLyrics-MainPage .VL-FS-Line,
+html.vl-centered-text .VividLyrics-FullscreenContent .VL-FS-Line,
+#VividLyrics-Card.vl-card-centered .VL-FS-Line {
+    text-align: center;
 }
 
 .Lyrics {
@@ -102,6 +118,7 @@
         background-clip: text;
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
+        text-shadow: 0 0 var(--text-blur, 0px) rgba(255, 255, 255, 0.5);
     }
 
     &.Static {
@@ -132,6 +149,7 @@
     background-clip: text;
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
+    text-shadow: 0 0 var(--text-blur, 0px) rgba(255, 255, 255, 0.5);
 }
 
 .Interlude {

@@ -6,6 +6,8 @@ import { whyamidoingthis, getNoLyricsMessage } from "../utils/no-lyrics-messages
 import LyricsRenderer from "../modules/lyrics-renderer";
 
 const BASE_ROUTE = "/vivid-lyrics";
+const CinemaIcon = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="2" y1="7" x2="7" y2="7"/><line x1="2" y1="17" x2="7" y2="17"/><line x1="17" y1="7" x2="22" y2="7"/><line x1="17" y1="17" x2="22" y2="17"/></svg>`;
+
 let pageContainer: HTMLDivElement | null = null;
 let hiddenSiblings: HTMLElement[] = [];
 let isOpen = false;
@@ -70,15 +72,6 @@ function renderPage(lyrics: TransformedLyrics | null): void {
   }
 }
 
-function renderToolbar(): string {
-  return `
-    <div class="VividLyrics-Toolbar">
-      <button id="VividLyrics-CinemaBtn" title="Cinema Mode">Cinema</button>
-      <button id="VividLyrics-FullscreenBtn" title="Fullscreen">Fullscreen</button>
-    </div>
-  `;
-}
-
 function open(): void {
   if (isOpen) return;
   isOpen = true;
@@ -88,11 +81,21 @@ function open(): void {
 
   pageContainer = document.createElement("div");
   pageContainer.id = "VividLyrics-MainPage";
-  pageContainer.innerHTML = `
-    <div class="VividLyrics-PageTitle">Lyrics</div>
-    ${renderToolbar()}
-    <div class="VividLyrics-PageContent">Loading...</div>
-  `;
+
+  const content = document.createElement("div");
+  content.className = "VividLyrics-PageContent";
+
+  const controls = document.createElement("div");
+  controls.className = "VL-MainControls";
+  const cinemaBtn = document.createElement("button");
+  cinemaBtn.className = "VL-MainControlBtn";
+  cinemaBtn.title = "Cinema Mode";
+  cinemaBtn.innerHTML = CinemaIcon;
+  cinemaBtn.addEventListener("click", () => setPageMode("cinema"));
+  controls.appendChild(cinemaBtn);
+
+  pageContainer.appendChild(content);
+  pageContainer.appendChild(controls);
 
   hiddenSiblings = Array.from(pageRoot.children).filter(
     (el) => el !== pageContainer
@@ -103,12 +106,6 @@ function open(): void {
 
   pageRoot.prepend(pageContainer);
   pageRoot.scrollTop = 0;
-
-  const cinemaBtn = pageContainer.querySelector<HTMLButtonElement>("#VividLyrics-CinemaBtn")!;
-  const fullscreenBtn = pageContainer.querySelector<HTMLButtonElement>("#VividLyrics-FullscreenBtn")!;
-
-  cinemaBtn.addEventListener("click", () => setPageMode("cinema"));
-  fullscreenBtn.addEventListener("click", () => setPageMode("fullscreen"));
 
   const uri = Spicetify.Player.data?.item?.uri;
   if (uri) {

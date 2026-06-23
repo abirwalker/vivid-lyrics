@@ -1,4 +1,10 @@
-import { getSettings, get, set, resetSettings, type Settings } from "../stores/settings";
+import {
+  getSettings,
+  get,
+  set,
+  resetSettings,
+  type Settings,
+} from "../stores/settings";
 import storage from "../utils/storage";
 import "../styles/settings.scss";
 
@@ -28,7 +34,7 @@ async function ensureSpicyFont(): Promise<void> {
     const fontRes = await fetch(absoluteURL);
     const buffer = await fontRes.arrayBuffer();
     const base64 = btoa(
-      new Uint8Array(buffer).reduce((s, b) => s + String.fromCharCode(b), "")
+      new Uint8Array(buffer).reduce((s, b) => s + String.fromCharCode(b), ""),
     );
     const dataURL = `data:font/woff2;base64,${base64}`;
     resolved = resolved.replace(match[0], `url(${dataURL})`);
@@ -53,25 +59,45 @@ function applyFont(font: Settings["fontFamily"]): void {
   }
 }
 
+function applyCenteredText(centered: boolean): void {
+  document.documentElement.classList.toggle("vl-centered-text", centered);
+}
+
+function applyCenteredTextCard(centered: boolean): void {
+  document
+    .getElementById("VividLyrics-Card")
+    ?.classList.toggle("vl-card-centered", centered);
+}
+
 export function applyStoredFont(): void {
   applyFont(get("fontFamily"));
   applyNativeLyricsVisibility(get("hideNativeLyrics"));
+  applyCenteredText(get("centeredText"));
+  applyCenteredTextCard(get("centeredTextCard"));
 }
 
 function applyNativeLyricsVisibility(hide: boolean): void {
-  let style = document.getElementById("VL-native-lyrics-css") as HTMLStyleElement;
+  let style = document.getElementById(
+    "VL-native-lyrics-css",
+  ) as HTMLStyleElement;
   if (!style) {
     style = document.createElement("style");
     style.id = "VL-native-lyrics-css";
     document.head.appendChild(style);
   }
-  style.textContent = hide ? `.main-nowPlayingBar-lyricsButton { display: none !important; }` : "";
+  style.textContent = hide
+    ? `.main-nowPlayingBar-lyricsButton { display: none !important; }`
+    : "";
 }
 
 let overlay: HTMLDivElement | null = null;
 let isOpen = false;
 
-function makeRow(label: string, desc: string, control: HTMLElement): HTMLElement {
+function makeRow(
+  label: string,
+  desc: string,
+  control: HTMLElement,
+): HTMLElement {
   const row = document.createElement("div");
   row.className = "VL-Row";
 
@@ -97,7 +123,13 @@ function makeRow(label: string, desc: string, control: HTMLElement): HTMLElement
   return row;
 }
 
-function makeSlider(min: number, max: number, step: number, value: number, onChange: (v: number) => void): HTMLInputElement {
+function makeSlider(
+  min: number,
+  max: number,
+  step: number,
+  value: number,
+  onChange: (v: number) => void,
+): HTMLInputElement {
   const input = document.createElement("input");
   input.type = "range";
   input.min = String(min);
@@ -108,7 +140,10 @@ function makeSlider(min: number, max: number, step: number, value: number, onCha
   return input;
 }
 
-function makeToggle(active: boolean, onChange: (v: boolean) => void): HTMLButtonElement {
+function makeToggle(
+  active: boolean,
+  onChange: (v: boolean) => void,
+): HTMLButtonElement {
   const btn = document.createElement("button");
   btn.className = `VL-Toggle${active ? " active" : ""}`;
   btn.addEventListener("click", () => {
@@ -119,7 +154,11 @@ function makeToggle(active: boolean, onChange: (v: boolean) => void): HTMLButton
   return btn;
 }
 
-function makeSelect(options: { label: string; value: string }[], current: string, onChange: (v: string) => void): HTMLSelectElement {
+function makeSelect(
+  options: { label: string; value: string }[],
+  current: string,
+  onChange: (v: string) => void,
+): HTMLSelectElement {
   const sel = document.createElement("select");
   for (const opt of options) {
     const o = document.createElement("option");
@@ -144,42 +183,125 @@ function buildContent(): HTMLElement {
   const content = document.createElement("div");
   content.className = "VL-Content";
 
-  const sections: Record<string, { label: string; desc: string; control: HTMLElement }[]> = {
-    "Lyrics": [
-      { label: "Auto-scroll", desc: "Scroll to active line", control: makeToggle(s.autoScroll, (v) => set("autoScroll", v)) },
-      { label: "Font Size", desc: "Lyrics text size", control: makeSelect([
-        { label: "Small", value: "90" },
-        { label: "Normal", value: "100" },
-        { label: "Large", value: "120" },
-      ], String(s.fontSize), (v) => set("fontSize", Number(v))) },
-      { label: "Font", desc: "Lyrics typeface", control: makeSelect([
-        { label: "Default", value: "default" },
-        { label: "Spicy", value: "spicy" },
-      ], s.fontFamily, (v) => {
-        set("fontFamily", v as Settings["fontFamily"]);
-        applyFont(v as Settings["fontFamily"]);
-      }) },
+  const sections: Record<
+    string,
+    { label: string; desc: string; control: HTMLElement }[]
+  > = {
+    Lyrics: [
+      {
+        label: "Auto-scroll",
+        desc: "Scroll to active line",
+        control: makeToggle(s.autoScroll, (v) => set("autoScroll", v)),
+      },
+      {
+        label: "Centered Text",
+        desc: "Center-align lyrics in main and cinema view",
+        control: makeToggle(s.centeredText, (v) => {
+          set("centeredText", v);
+          applyCenteredText(v);
+        }),
+      },
+      {
+        label: "Centered Text for NPV",
+        desc: "Center-align lyrics in Now Playing View's card-view mode",
+        control: makeToggle(s.centeredTextCard, (v) => {
+          set("centeredTextCard", v);
+          applyCenteredTextCard(v);
+        }),
+      },
+      {
+        label: "Font Size",
+        desc: "Lyrics text size",
+        control: makeSelect(
+          [
+            { label: "Small", value: "90" },
+            { label: "Normal", value: "100" },
+            { label: "Large", value: "120" },
+          ],
+          String(s.fontSize),
+          (v) => set("fontSize", Number(v)),
+        ),
+      },
+      {
+        label: "Font",
+        desc: "Lyrics typeface",
+        control: makeSelect(
+          [
+            { label: "Default", value: "default" },
+            { label: "Spicy", value: "spicy" },
+          ],
+          s.fontFamily,
+          (v) => {
+            set("fontFamily", v as Settings["fontFamily"]);
+            applyFont(v as Settings["fontFamily"]);
+          },
+        ),
+      },
     ],
-    "Background": [
-      { label: "Mode", desc: "Background style", control: makeSelect([
-        { label: "None", value: "none" },
-        { label: "Static", value: "static" },
-        { label: "Dynamic", value: "dynamic" },
-        { label: "Color", value: "color" },
-      ], s.backgroundMode, (v) => set("backgroundMode", v as Settings["backgroundMode"])) },
+    Background: [
+      {
+        label: "Mode",
+        desc: "Background style",
+        control: makeSelect(
+          [
+            { label: "None", value: "none" },
+            { label: "Static", value: "static" },
+            { label: "Dynamic", value: "dynamic" },
+            { label: "Color", value: "color" },
+          ],
+          s.backgroundMode,
+          (v) => set("backgroundMode", v as Settings["backgroundMode"]),
+        ),
+      },
     ],
-    "Interface": [
-      { label: "Hide Spotify Lyrics Button", desc: "Hide the native lyrics button in the playbar", control: makeToggle(s.hideNativeLyrics, (v) => {
-        set("hideNativeLyrics", v);
-        applyNativeLyricsVisibility(v);
-      }) },
+    Interface: [
+      {
+        label: "Hide Spotify Lyrics Button",
+        desc: "Hide the native lyrics button in the playbar",
+        control: makeToggle(s.hideNativeLyrics, (v) => {
+          set("hideNativeLyrics", v);
+          applyNativeLyricsVisibility(v);
+        }),
+      },
+      {
+        label: "Toolbar Position",
+        desc: "Cinema overlay controls",
+        control: makeSelect(
+          [
+            { label: "Top", value: "top" },
+            { label: "Bottom", value: "bottom" },
+          ],
+          s.controlsPosition,
+          (v) => set("controlsPosition", v as Settings["controlsPosition"]),
+        ),
+      },
     ],
     "Coming Soon": [
-      { label: "Glow Intensity", desc: "Strength of the glow effect", control: makeSoon() },
-      { label: "Bounce Strength", desc: "How much syllables bounce", control: makeSoon() },
-      { label: "Spotlight Words", desc: "Random words get highlighted", control: makeSoon() },
-      { label: "Blur Effect", desc: "Blur distant lyrics", control: makeSoon() },
-      { label: "Romanization", desc: "Show romanized text", control: makeSoon() },
+      {
+        label: "Glow Intensity",
+        desc: "Strength of the glow effect",
+        control: makeSoon(),
+      },
+      {
+        label: "Bounce Strength",
+        desc: "How much syllables bounce",
+        control: makeSoon(),
+      },
+      {
+        label: "Spotlight Words",
+        desc: "Random words get highlighted",
+        control: makeSoon(),
+      },
+      {
+        label: "Blur Effect",
+        desc: "Blur distant lyrics",
+        control: makeSoon(),
+      },
+      {
+        label: "Romanization",
+        desc: "Show romanized text",
+        control: makeSoon(),
+      },
     ],
   };
 
