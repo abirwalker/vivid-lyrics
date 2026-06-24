@@ -241,7 +241,8 @@ class Spring {
   }
 }
 
-// Scale: 0.95 → 1.025 (at 70%) → 1.0
+// Scale: 0.95 → 1.025 (at 70%) → 1.0 (matches Spicy Lyrics base spline)
+// Emphasis multiplier (1.103) is applied in the renderer for letter-level stretch
 const ScaleRange = [
   { Time: 0, Value: 0.95 },
   { Time: 0.7, Value: 1.025 },
@@ -255,24 +256,35 @@ const YOffsetRange = [
   { Time: 1, Value: 0 },
 ];
 
+// Glow: 0 → 1 (at 15%) → 1 (at 60%) → 0 (matches Spicy Lyrics exactly)
+const GlowRange = [
+  { Time: 0, Value: 0 },
+  { Time: 0.15, Value: 1 },
+  { Time: 0.6, Value: 1 },
+  { Time: 1, Value: 0 },
+];
+
 const ScaleSpline = makeSpline(ScaleRange);
 const YOffsetSpline = makeSpline(YOffsetRange);
+const GlowSpline = makeSpline(GlowRange);
 
-// Spring damping/frequency (from spicy-lyrics)
+// Spring damping/frequency
 const SCALE_DAMPING = 0.6;
 const SCALE_FREQUENCY = 0.7;
 const YOFFSET_DAMPING = 0.4;
 const YOFFSET_FREQUENCY = 1.25;
+const GLOW_DAMPING = 0.5;
+const GLOW_FREQUENCY = 1;
 
 // --- Public Types ---
 export type SpicySpringConfig = {
   enabled: boolean;
-  intensity: number; // 0-2 multiplier
 };
 
 export type SpringSet = {
   Scale: Spring;
   YOffset: Spring;
+  Glow: Spring;
 };
 
 // --- Public API ---
@@ -280,11 +292,8 @@ export type SpringSet = {
 export function createSpringSet(): SpringSet {
   return {
     Scale: new Spring(ScaleSpline.at(0), SCALE_FREQUENCY, SCALE_DAMPING),
-    YOffset: new Spring(
-      YOffsetSpline.at(0),
-      YOFFSET_FREQUENCY,
-      YOFFSET_DAMPING,
-    ),
+    YOffset: new Spring(YOffsetSpline.at(0), YOFFSET_FREQUENCY, YOFFSET_DAMPING),
+    Glow: new Spring(GlowSpline.at(0), GLOW_FREQUENCY, GLOW_DAMPING),
   };
 }
 
@@ -296,13 +305,15 @@ export function setSpringGoals(
   if (state === "Active") {
     springs.Scale.SetGoal(ScaleSpline.at(timeScale));
     springs.YOffset.SetGoal(YOffsetSpline.at(timeScale));
+    springs.Glow.SetGoal(GlowSpline.at(timeScale));
   } else if (state === "NotSung") {
     springs.Scale.SetGoal(ScaleSpline.at(0));
     springs.YOffset.SetGoal(YOffsetSpline.at(0));
+    springs.Glow.SetGoal(GlowSpline.at(0));
   } else {
-    // Sung
     springs.Scale.SetGoal(ScaleSpline.at(1));
     springs.YOffset.SetGoal(YOffsetSpline.at(1));
+    springs.Glow.SetGoal(GlowSpline.at(1));
   }
 }
 
@@ -312,44 +323,35 @@ export function stepSprings(
 ): {
   scale: number;
   yOffset: number;
+  glow: number;
 } {
   return {
     scale: springs.Scale.Step(deltaTime),
     yOffset: springs.YOffset.Step(deltaTime),
+    glow: springs.Glow.Step(deltaTime),
   };
 }
 
 export function applySpringStyles(
   el: HTMLElement,
-  values: { scale: number; yOffset: number },
-  isEmphasized: boolean,
-  config: SpicySpringConfig,
+  values: { scale: number; yOffset: number; glow: number },
 ): void {
-  const intensity = config.intensity;
-
-  // Scale
-  const scale = 1 + (values.scale - 1) * intensity;
-  el.style.scale = `${scale}`;
-
-  // YOffset (translate3d for GPU acceleration)
-  const yMul = isEmphasized ? 2 : 1;
-  el.style.transform = `translate3d(0, calc(var(--vl-default-font-size) * ${values.yOffset * yMul * intensity}), 0)`;
+  el.style.scale = `${values.scale}`;
+  el.style.transform = `translate3d(0, calc(var(--vl-default-font-size) * ${values.yOffset}), 0)`;
+  el.style.setProperty("--text-shadow-blur-radius", `${4 + 2 * values.glow}px`);
+  el.style.setProperty("--text-shadow-opacity", `${Math.min(values.glow * 35, 100)}%`);
 }
 
-export function applyGradientProgress(
+export function applyGlowStyles(
   el: HTMLElement,
-  timeScale: number,
-  state: "NotSung" | "Active" | "Sung",
+  glowAlpha: number,
+  intensity: number,
+  blurBase = 4,
 ): void {
-  let progress: number;
-  if (state === "Active") {
-    progress = -20 + 120 * timeScale;
-  } else if (state === "NotSung") {
-    progress = -20;
-  } else {
-    progress = 100;
-  }
-  el.style.setProperty("--gradient-progress", `${progress}%`);
+  const a = glowAlpha * intensity;
+  const blur = blurBase + 8 * a;
+  el.style.setProperty("--text-shadow-blur-radius", `${blur}px`);
+  el.style.setProperty("--text-shadow-opacity", `${a}`);
 }
 
 export function isEmphasized(duration: number, textLength: number): boolean {
@@ -362,5 +364,5 @@ export function easeSinOut(t: number): number {
 }
 
 // Re-export spline for external use
-export { makeSpline, clamp, ScaleSpline, YOffsetSpline };
+export { makeSpline, clamp, ScaleSpline, YOffsetSpline, GlowSpline };
 export type { Spline };

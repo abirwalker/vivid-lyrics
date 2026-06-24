@@ -5,14 +5,15 @@ import {
   setSpringGoals,
   stepSprings,
   applySpringStyles,
-  applyGradientProgress,
   isEmphasized,
-  easeSinOut,
   ScaleSpline,
   YOffsetSpline,
+  GlowSpline,
   type SpringSet,
   type SpicySpringConfig,
 } from "./spicy-spring";
+
+const EMPHASIS_LONGER_THAN_MS = 1500;
 
 type LyricState = "Idle" | "Active" | "Sung";
 
@@ -20,7 +21,7 @@ type LetterInfo = {
   span: HTMLSpanElement;
   startScale: number;
   endScale: number;
-  springs: SpringSet;
+  springs: SpringSet | null;
 };
 
 type SyllableInfo = {
@@ -174,10 +175,9 @@ export default class LyricsRenderer {
             span.className = "Syllable";
 
             const letters: LetterInfo[] = [];
+            const lettersArr = [...text];
 
-            if (emphasized && textLen > 0) {
-              // Split into individual letter spans for proximity-based animation
-              const lettersArr = [...text];
+            if (textLen > 0) {
               const letterDuration = sDuration / lettersArr.length;
 
               for (let i = 0; i < lettersArr.length; i++) {
@@ -193,11 +193,9 @@ export default class LyricsRenderer {
                   span: letterSpan,
                   startScale: (letterStart - startTime) / (duration || 1),
                   endScale: (letterEnd - startTime) / (duration || 1),
-                  springs: createSpringSet(),
+                  springs: emphasized && textLen > 0 ? createSpringSet() : null,
                 });
               }
-            } else {
-              span.textContent = text;
             }
 
             wordSpan.appendChild(span);
@@ -206,7 +204,7 @@ export default class LyricsRenderer {
               span,
               startScale: (sStartTime - startTime) / (duration || 1),
               endScale: (sEndTime - startTime) / (duration || 1),
-              springs: emphasized ? null : createSpringSet(),
+              springs: createSpringSet(),
               emphasized,
               letters,
             });
@@ -219,8 +217,17 @@ export default class LyricsRenderer {
         if (!text) continue;
         const span = document.createElement("span");
         span.className = "Lyric Synced Line";
-        span.textContent = text;
+        const charSpans: HTMLSpanElement[] = [];
+        const chars = [...text];
+        for (let ci = 0; ci < chars.length; ci++) {
+          const charSpan = document.createElement("span");
+          charSpan.className = "SyncedChar";
+          charSpan.textContent = chars[ci];
+          span.appendChild(charSpan);
+          charSpans.push(charSpan);
+        }
         vocals.appendChild(span);
+        (span as any)._charSpans = charSpans;
       }
 
       group.appendChild(vocals);
@@ -281,7 +288,6 @@ export default class LyricsRenderer {
 
       const springConfig: SpicySpringConfig = {
         enabled: get("springEnabled"),
-        intensity: get("springIntensity"),
       };
 
       for (const line of this.lines) {
@@ -328,27 +334,6 @@ export default class LyricsRenderer {
     if (line.isSyllableType && line.syllables.length > 0 && line.duration > 0) {
       const timeScale = clamp(relativeTime / line.duration, 0, 1);
 
-      // Find active letter index for proximity-based animation
-      let activeLetterIdx = -1;
-      if (stateNow === "Active") {
-        for (const syl of line.syllables) {
-          if (syl.emphasized && syl.letters.length > 0) {
-            for (let li = 0; li < syl.letters.length; li++) {
-              const ltr = syl.letters[li];
-              const ltrProgress = clamp(
-                (timeScale - ltr.startScale) / (ltr.endScale - ltr.startScale || 0.01),
-                0, 1
-              );
-              if (ltrProgress > 0 && ltrProgress < 1) {
-                activeLetterIdx = li;
-                break;
-              }
-            }
-            if (activeLetterIdx >= 0) break;
-          }
-        }
-      }
-
       for (const syl of line.syllables) {
         const sylDuration = syl.endScale - syl.startScale || 0.01;
         const sylProgress = clamp(
@@ -358,118 +343,126 @@ export default class LyricsRenderer {
         );
 
         // Gradient progress (always applied)
-        const pct = sylProgress * 100;
+        const pct = -20 + sylProgress * 140;
         syl.span.style.setProperty("--char-progress", `${pct}%`);
-        syl.span.style.setProperty("--char-progress-2", `${pct > 0 ? pct + 20 : 0}%`);
 
-        // Letter-level animation for emphasized syllables
-        if (springConfig.enabled && syl.emphasized && syl.letters.length > 0) {
-          // Find active letter index and its percentage
-          let activeLetterIndex = -1;
-          let activeLetterPercentage = 0;
-          if (stateNow === "Active") {
-            for (let li = 0; li < syl.letters.length; li++) {
-              const ltr = syl.letters[li];
-              const ltrDuration = ltr.endScale - ltr.startScale || 0.01;
-              const ltrProg = clamp(
-                (timeScale - ltr.startScale) / ltrDuration,
-                0, 1
-              );
-              if (ltrProg > 0 && ltrProg < 1) {
-                activeLetterIndex = li;
-                activeLetterPercentage = ltrProg;
-                break;
+        // Per-character gradient progress (always applied)
+        for (const ltr of syl.letters) {
+          const ltrDuration = ltr.endScale - ltr.startScale || 0.01;
+          const ltrProgress = clamp(
+            (timeScale - ltr.startScale) / ltrDuration,
+            0, 1
+          );
+
+          const ltrPct = -20 + ltrProgress * 140;
+          ltr.span.style.setProperty("--char-progress", `${ltrPct}%`);
+
+          // Spring-driven animation for emphasized chars only (Spicy 1:1)
+          if (springConfig.enabled && ltr.springs) {
+            let activeLetterIndex = -1;
+            let activeLetterPercentage = 0;
+            if (stateNow === "Active") {
+              for (let li = 0; li < syl.letters.length; li++) {
+                const other = syl.letters[li];
+                const otherDuration = other.endScale - other.startScale || 0.01;
+                const otherProg = clamp(
+                  (timeScale - other.startScale) / otherDuration,
+                  0, 1
+                );
+                if (otherProg > 0 && otherProg < 1) {
+                  activeLetterIndex = li;
+                  activeLetterPercentage = otherProg;
+                  break;
+                }
               }
             }
-          }
 
-          for (let li = 0; li < syl.letters.length; li++) {
-            const ltr = syl.letters[li];
-            const ltrDuration = ltr.endScale - ltr.startScale || 0.01;
-            const ltrProgress = clamp(
-              (timeScale - ltr.startScale) / ltrDuration,
-              0, 1
-            );
+            // Spicy-style emphasis stretch multiplier: longer words (>1500ms) get 1.103x, shorter get 1.09x
+            const sylDurationMs = (syl.endScale - syl.startScale) * line.duration * 1000;
+            const stretchMultiplier = sylDurationMs > EMPHASIS_LONGER_THAN_MS ? 1.103 : 1.09;
 
-            // Determine letter state
-            let ltrState: "NotSung" | "Active" | "Sung";
-            if (stateNow === "Sung") {
-              ltrState = "Sung";
-            } else if (ltrProgress > 0 && ltrProgress < 1) {
-              ltrState = "Active";
-            } else if (ltrProgress >= 1) {
-              ltrState = "Sung";
-            } else {
-              ltrState = "NotSung";
-            }
-
-            // Default to resting values
             let targetScale = ScaleSpline.at(0);
             let targetYOffset = YOffsetSpline.at(0);
+            let targetGlow = GlowSpline.at(0);
 
-            // Apply proximity-based animation if an active letter is found
             if (activeLetterIndex >= 0) {
-              const baseScale = ScaleSpline.at(activeLetterPercentage);
+              const baseScale = ScaleSpline.at(activeLetterPercentage) * stretchMultiplier;
               const baseYOffset = YOffsetSpline.at(activeLetterPercentage);
+              const baseGlow = GlowSpline.at(activeLetterPercentage);
 
               const restingScale = ScaleSpline.at(0);
               const restingYOffset = YOffsetSpline.at(0);
+              const restingGlow = GlowSpline.at(0);
 
-              const distance = Math.abs(li - activeLetterIndex);
+              const thisIdx = syl.letters.indexOf(ltr);
+              const distance = Math.abs(thisIdx - activeLetterIndex);
               const falloff = Math.max(0, 1 / (1 + distance * 0.9));
 
               targetScale = restingScale + (baseScale - restingScale) * falloff;
               targetYOffset = restingYOffset + (baseYOffset - restingYOffset) * falloff;
-            }
+              targetGlow = restingGlow + (baseGlow - restingGlow) * falloff;
+            } else {
+              const ltrState = stateNow === "Sung" ? "Sung"
+                : ltrProgress > 0 && ltrProgress < 1 ? "Active"
+                : ltrProgress >= 1 ? "Sung" : "NotSung";
 
-            // Override for NotSung letters (use resting values)
-            if (ltrState === "NotSung") {
-              targetScale = ScaleSpline.at(0);
-              targetYOffset = YOffsetSpline.at(0);
+              if (ltrState === "NotSung") {
+                targetScale = ScaleSpline.at(0);
+                targetYOffset = YOffsetSpline.at(0);
+                targetGlow = GlowSpline.at(0);
+              } else if (ltrState === "Sung") {
+                targetScale = ScaleSpline.at(1);
+                targetYOffset = YOffsetSpline.at(1);
+                targetGlow = GlowSpline.at(1); // = 0 — no glow after word is sung
+              } else {
+                targetScale = ScaleSpline.at(ltrProgress);
+                targetYOffset = YOffsetSpline.at(ltrProgress);
+                targetGlow = GlowSpline.at(ltrProgress);
+              }
             }
 
             ltr.springs.Scale.SetGoal(targetScale);
             ltr.springs.YOffset.SetGoal(targetYOffset);
+            ltr.springs.Glow.SetGoal(targetGlow);
 
             const values = stepSprings(ltr.springs, deltaTime);
 
-            // Apply with 2x Y offset for letters (GPU accelerated)
-            const intensity = springConfig.intensity;
-            const scale = 1 + (values.scale - 1) * intensity;
-            ltr.span.style.scale = `${scale}`;
-            ltr.span.style.transform = `translate3d(0, calc(var(--vl-default-font-size) * ${values.yOffset * 2 * intensity}), 0)`;
-
-            // Gradient for letter (with easeSinOut for active letter)
-            let ltrGradient: number;
-            if (ltrState === "NotSung") {
-              ltrGradient = -20;
-            } else if (ltrState === "Sung") {
-              ltrGradient = 100;
-            } else {
-              // Active letter gets eased gradient, others stay at -20
-              ltrGradient = li === activeLetterIndex
-                ? -20 + 120 * easeSinOut(activeLetterPercentage)
-                : -20;
-            }
-            ltr.span.style.setProperty("--gradient-position", `${ltrGradient}%`);
+            // Spicy 1:1 letter application: raw spring values, no intensity multiplier
+            ltr.span.style.scale = `${values.scale}`;
+            ltr.span.style.transform = `translate3d(0, calc(var(--vl-default-font-size) * ${values.yOffset * 2}), 0)`;
+            ltr.span.style.setProperty("--text-shadow-blur-radius", `${4 + 12 * values.glow}px`);
+            ltr.span.style.setProperty("--text-shadow-opacity", `${values.glow * 185}%`);
           }
-        } else if (springConfig.enabled && syl.springs) {
-          // Regular syllable spring animation
+        }
+
+        // Syllable-level spring (for non-emphasized syllables)
+        if (springConfig.enabled && syl.springs) {
           const sylState = stateNow === "Active"
             ? (sylProgress > 0 && sylProgress < 1 ? "Active" : sylProgress >= 1 ? "Sung" : "NotSung")
             : stateNow === "Sung" ? "Sung" : "NotSung";
 
           setSpringGoals(syl.springs, sylProgress, sylState);
           const values = stepSprings(syl.springs, deltaTime);
-          applySpringStyles(syl.span, values, false, springConfig);
+          applySpringStyles(syl.span, values);
         }
       }
     } else if (!line.isSyllableType && line.syllables.length === 0) {
       const lyricSpan = line.vocals.querySelector(".Lyric.Synced") as HTMLElement | null;
       if (lyricSpan && line.duration > 0) {
-        const progress = clamp(relativeTime / line.duration, 0, 1) * 100;
-        lyricSpan.style.setProperty("--line-progress", `${progress}%`);
-        lyricSpan.style.setProperty("--line-progress-2", `${progress > 0 ? progress + 20 : 0}%`);
+        const charSpans = (lyricSpan as any)._charSpans as HTMLSpanElement[] | undefined;
+        if (charSpans && charSpans.length > 0) {
+          const totalChars = charSpans.length;
+          const charDuration = line.duration / totalChars;
+          for (let ci = 0; ci < charSpans.length; ci++) {
+            const charStart = ci * charDuration;
+            const charPct = -20 + clamp((relativeTime - charStart) / (charDuration || 0.01), 0, 1) * 140;
+            charSpans[ci].style.setProperty("--char-progress", `${charPct}%`);
+          }
+        } else {
+          // Fallback: single span progress
+          const linePct = -20 + clamp(relativeTime / line.duration, 0, 1) * 140;
+          lyricSpan.style.setProperty("--line-progress", `${linePct}%`);
+        }
       }
     }
 
@@ -515,11 +508,21 @@ export default class LyricsRenderer {
 
     const reset = this.autoScrollBlocked;
 
+    if (!get("blurEnabled")) {
+      for (let i = 0; i < this.lines.length; i++) {
+        const line = this.lines[i];
+        line.container.style.filter = "";
+        line.container.style.opacity = "";
+      }
+      return;
+    }
+
     for (let i = 0; i < this.lines.length; i++) {
       const line = this.lines[i];
 
       if (reset || activeStart === -1) {
-        line.vocals.style.setProperty("--text-blur", "0px");
+        line.container.style.filter = "";
+        line.container.style.opacity = "";
         continue;
       }
 
@@ -532,7 +535,14 @@ export default class LyricsRenderer {
         distance = 0;
       }
 
-      line.vocals.style.setProperty("--text-blur", `${BLURMAP[distance]}px`);
+      const blurPx = BLURMAP[distance];
+      let opacity = 1;
+      if (distance === 1) opacity = 0.85;
+      else if (distance === 2) opacity = 0.55;
+      else if (distance >= 3) opacity = Math.max(0.2, 1 - distance * 0.25);
+
+      line.container.style.filter = blurPx > 0 ? `blur(${blurPx}px)` : "";
+      line.container.style.opacity = `${opacity}`;
     }
   }
 
