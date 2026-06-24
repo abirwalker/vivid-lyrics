@@ -118,7 +118,7 @@ function populateBody(lyrics: TransformedLyrics): void {
     }
     body.appendChild(scroll);
   } else {
-    renderer = new LyricsRenderer(body, lyrics);
+    renderer = new LyricsRenderer(body, lyrics, [0, 1.25, 2.5, 3.75, 5, 6.25]);
     if (lyrics.songWriters?.length) {
       const credits = document.createElement("div");
       credits.className = "VL-Credits";

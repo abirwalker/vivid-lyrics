@@ -1,5 +1,7 @@
 .LyricsScrollContainer {
     --vl-default-font-size: clamp(1.85rem, 7cqw, 3.5rem);
+    --vl-text-highlight: rgba(255, 255, 255, 1);
+    --vl-text-dim: rgba(255, 255, 255, 0.35);
     overflow-y: auto;
     overflow-x: hidden;
     scrollbar-width: none;
@@ -63,8 +65,35 @@ html.vl-centered-text .VividLyrics-FullscreenContent .VL-FS-Line,
     font: inherit;
     line-height: 1.1818181818;
 
+    & .Vocals.Lead {
+        opacity: 0.51;
+        transition: opacity 0.25s cubic-bezier(0.61, 1, 0.88, 1);
+    }
+
+    &.Active .Vocals.Lead {
+        opacity: 1;
+    }
+
+    &.Sung .Vocals.Lead {
+        opacity: 0.497;
+    }
+
     &:hover .Vocals.Lead {
         opacity: 1;
+    }
+
+    & .Vocals.Background {
+        opacity: 0.275;
+        font-size: calc(inherit * 0.75);
+        font-weight: 500;
+    }
+
+    &.Active .Vocals.Background {
+        opacity: 0.8;
+    }
+
+    &.Sung .Vocals.Background {
+        opacity: 0.332;
     }
 }
 
@@ -74,33 +103,6 @@ html.vl-centered-text .VividLyrics-FullscreenContent .VL-FS-Line,
     font-size: inherit;
     font-weight: 700;
     max-width: 96%;
-
-    &.Lead {
-        opacity: 0.51;
-        transition: opacity 0.25s cubic-bezier(0.61, 1, 0.88, 1);
-
-        &.Active {
-            opacity: 1;
-        }
-
-        &.Sung {
-            opacity: 0.497;
-        }
-    }
-
-    &.Background {
-        opacity: 0.275;
-        font-size: calc(inherit * 0.75);
-        font-weight: 500;
-
-        &.Active {
-            opacity: 0.8;
-        }
-
-        &.Sung {
-            opacity: 0.332;
-        }
-    }
 }
 
 .Lyric {
@@ -109,16 +111,16 @@ html.vl-centered-text .VividLyrics-FullscreenContent .VL-FS-Line,
     &.Synced {
         background-image: linear-gradient(
             90deg,
-            rgba(255, 255, 255, 0.85) var(--line-progress, -20%),
-            rgba(255, 255, 255, 0.35) calc(var(--line-progress, -20%) + 20%)
+            var(--vl-text-highlight) var(--line-progress, -20%),
+            var(--vl-text-dim) calc(var(--line-progress, -20%) + 20%)
         );
         background-clip: text;
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
         text-shadow:
-            0 0 calc(var(--text-shadow-blur-radius, 0px) * 0.4) rgb(255 255 255 / var(--text-shadow-opacity, 0%)),
-            0 0 var(--text-shadow-blur-radius, 0px) rgb(255 255 255 / calc(var(--text-shadow-opacity, 0%) * 0.6)),
-            0 0 calc(var(--text-shadow-blur-radius, 0px) * 2) rgb(255 255 255 / calc(var(--text-shadow-opacity, 0%) * 0.3));
+            0 0 var(--vl-blur, 0) var(--vl-text-dim),
+            0 0 6px rgba(255, 255, 255, 0.15),
+            0 0 var(--text-shadow-blur-radius, 0px) rgb(255 255 255 / var(--text-shadow-opacity, 0%));
     }
 
     &.Static {
@@ -143,16 +145,16 @@ html.vl-centered-text .VividLyrics-FullscreenContent .VL-FS-Line,
     display: inline-block;
     background-image: linear-gradient(
         90deg,
-        rgba(255, 255, 255, 0.85) var(--char-progress, -20%),
-        rgba(255, 255, 255, 0.35) calc(var(--char-progress, -20%) + 20%)
+        var(--vl-text-highlight) var(--char-progress, -20%),
+        var(--vl-text-dim) calc(var(--char-progress, -20%) + 20%)
     );
     background-clip: text;
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     text-shadow:
-        0 0 calc(var(--text-shadow-blur-radius, 0px) * 0.4) rgb(255 255 255 / var(--text-shadow-opacity, 0%)),
-        0 0 var(--text-shadow-blur-radius, 0px) rgb(255 255 255 / calc(var(--text-shadow-opacity, 0%) * 0.6)),
-        0 0 calc(var(--text-shadow-blur-radius, 0px) * 2) rgb(255 255 255 / calc(var(--text-shadow-opacity, 0%) * 0.3));
+        0 0 var(--vl-blur, 0) var(--vl-text-dim),
+        0 0 6px rgba(255, 255, 255, 0.15),
+        0 0 var(--text-shadow-blur-radius, 0px) rgb(255 255 255 / var(--text-shadow-opacity, 0%));
     will-change: transform, scale, text-shadow;
     backface-visibility: hidden;
 }
@@ -161,16 +163,16 @@ html.vl-centered-text .VividLyrics-FullscreenContent .VL-FS-Line,
     display: inline-block;
     background-image: linear-gradient(
         90deg,
-        rgba(255, 255, 255, 0.85) var(--char-progress, -20%),
-        rgba(255, 255, 255, 0.35) calc(var(--char-progress, -20%) + 20%)
+        var(--vl-text-highlight) var(--char-progress, -20%),
+        var(--vl-text-dim) calc(var(--char-progress, -20%) + 20%)
     );
     background-clip: text;
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     text-shadow:
-        0 0 calc(var(--text-shadow-blur-radius, 0px) * 0.4) rgb(255 255 255 / var(--text-shadow-opacity, 0%)),
-        0 0 var(--text-shadow-blur-radius, 0px) rgb(255 255 255 / calc(var(--text-shadow-opacity, 0%) * 0.6)),
-        0 0 calc(var(--text-shadow-blur-radius, 0px) * 2) rgb(255 255 255 / calc(var(--text-shadow-opacity, 0%) * 0.3));
+        0 0 var(--vl-blur, 0) var(--vl-text-dim),
+        0 0 6px rgba(255, 255, 255, 0.15),
+        0 0 var(--text-shadow-blur-radius, 0px) rgb(255 255 255 / var(--text-shadow-opacity, 0%));
     will-change: transform, scale, text-shadow;
     backface-visibility: hidden;
 }

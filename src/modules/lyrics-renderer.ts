@@ -44,7 +44,6 @@ type LineInfo = {
   isSyllableType: boolean;
 };
 
-const BLURMAP = [0, 1, 2, 3, 4, 5];
 const USER_SCROLL_RESUME_MS = 3000;
 
 function clamp(v: number, min: number, max: number): number {
@@ -64,10 +63,13 @@ export default class LyricsRenderer {
   private autoScrollBlocked = false;
   private userScrollTimer: ReturnType<typeof setTimeout> | null = null;
 
+  private blurMap: number[];
   constructor(
     parentContainer: HTMLElement,
-    private lyrics: TransformedLyrics
+    private lyrics: TransformedLyrics,
+    blurMap?: number[],
   ) {
+    this.blurMap = blurMap ?? [0, 0, 0.5, 1, 1.5, 2];
     this.scrollContainer = document.createElement("div");
     this.scrollContainer.className = "LyricsScrollContainer";
 
@@ -511,7 +513,7 @@ export default class LyricsRenderer {
     if (!get("blurEnabled")) {
       for (let i = 0; i < this.lines.length; i++) {
         const line = this.lines[i];
-        line.container.style.filter = "";
+        line.container.style.removeProperty("--vl-blur");
         line.container.style.opacity = "";
       }
       return;
@@ -521,27 +523,28 @@ export default class LyricsRenderer {
       const line = this.lines[i];
 
       if (reset || activeStart === -1) {
-        line.container.style.filter = "";
+        line.container.style.removeProperty("--vl-blur");
         line.container.style.opacity = "";
         continue;
       }
 
-      let distance = BLURMAP.length - 1;
+      let distance = this.blurMap.length - 1;
       if (i < activeStart) {
-        distance = Math.min(activeStart - i, BLURMAP.length - 1);
+        distance = Math.min(activeStart - i, this.blurMap.length - 1);
       } else if (i > activeEnd) {
-        distance = Math.min(i - activeEnd, BLURMAP.length - 1);
+        distance = Math.min(i - activeEnd, this.blurMap.length - 1);
       } else {
         distance = 0;
       }
 
-      const blurPx = BLURMAP[distance];
+      const blurPx = this.blurMap[distance];
       let opacity = 1;
-      if (distance === 1) opacity = 0.85;
-      else if (distance === 2) opacity = 0.55;
-      else if (distance >= 3) opacity = Math.max(0.2, 1 - distance * 0.25);
+      if (distance === 1) opacity = 0.9;
+      else if (distance === 2) opacity = 0.75;
+      else if (distance === 3) opacity = 0.6;
+      else if (distance >= 4) opacity = 0.45;
 
-      line.container.style.filter = blurPx > 0 ? `blur(${blurPx}px)` : "";
+      line.container.style.setProperty("--vl-blur", blurPx > 0 ? `${blurPx}px` : "0");
       line.container.style.opacity = `${opacity}`;
     }
   }
