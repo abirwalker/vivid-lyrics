@@ -14,6 +14,8 @@ export type Settings = {
   controlsPosition: "top" | "bottom";
   centeredText: boolean;
   centeredTextCard: boolean;
+  springEnabled: boolean;
+  springIntensity: number;
 };
 
 const defaults: Settings = {
@@ -30,6 +32,8 @@ const defaults: Settings = {
   controlsPosition: "top",
   centeredText: false,
   centeredTextCard: false,
+  springEnabled: true,
+  springIntensity: 1.0,
 };
 
 let current: Settings = { ...defaults };

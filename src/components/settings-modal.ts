@@ -237,6 +237,18 @@ function buildContent(): HTMLElement {
           },
         ),
       },
+      {
+        label: "Spicy Spring",
+        desc: "Bouncy syllable animation",
+        control: makeToggle(s.springEnabled, (v) => set("springEnabled", v)),
+      },
+      {
+        label: "Spring Intensity",
+        desc: "Motion strength (0-2x)",
+        control: makeSlider(0, 2, 0.1, s.springIntensity, (v) =>
+          set("springIntensity", v),
+        ),
+      },
     ],
     Background: [
       {
@@ -280,11 +292,6 @@ function buildContent(): HTMLElement {
       {
         label: "Glow Intensity",
         desc: "Strength of the glow effect",
-        control: makeSoon(),
-      },
-      {
-        label: "Bounce Strength",
-        desc: "How much syllables bounce",
         control: makeSoon(),
       },
       {

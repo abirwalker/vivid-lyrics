@@ -1,4 +1,5 @@
 .LyricsScrollContainer {
+    --vl-default-font-size: clamp(1.85rem, 7cqw, 3.5rem);
     overflow-y: auto;
     overflow-x: hidden;
     scrollbar-width: none;
@@ -30,7 +31,7 @@
     margin: 1cqw 0;
     opacity: 0.51;
     font-family: var(--vl-font-stack, sans-serif);
-    font-size: calc(clamp(1.85rem, 7cqw, 3.5rem) * var(--vl-font-size, 1));
+    font-size: calc(var(--vl-default-font-size) * var(--vl-font-size, 1));
     font-weight: 700;
     line-height: 1.1818181818;
 }
@@ -49,7 +50,7 @@ html.vl-centered-text .VividLyrics-FullscreenContent .VL-FS-Line,
 
 .Lyrics {
     font-family: var(--vl-font-stack, sans-serif);
-    font-size: calc(clamp(1.85rem, 7cqw, 3.5rem) * var(--vl-font-size, 1));
+    font-size: calc(var(--vl-default-font-size) * var(--vl-font-size, 1));
     line-height: 1.1818181818;
     padding: 0 4px;
 }
@@ -140,7 +141,7 @@ html.vl-centered-text .VividLyrics-FullscreenContent .VL-FS-Line,
 }
 
 .Syllable {
-    display: inline;
+    display: inline-block;
     background-image: linear-gradient(
         90deg,
         rgba(255, 255, 255, 0.85) var(--char-progress, 0%),
@@ -150,6 +151,23 @@ html.vl-centered-text .VividLyrics-FullscreenContent .VL-FS-Line,
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     text-shadow: 0 0 var(--text-blur, 0px) rgba(255, 255, 255, 0.5);
+    will-change: transform, scale, text-shadow;
+    backface-visibility: hidden;
+}
+
+.Letter {
+    display: inline-block;
+    background-image: linear-gradient(
+        90deg,
+        rgba(255, 255, 255, 0.85) var(--gradient-position, -20%),
+        rgba(255, 255, 255, 0.5) calc(var(--gradient-position, -20%) + 20%)
+    );
+    background-clip: text;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    text-shadow: 0 0 var(--text-shadow-blur-radius, 4px) rgba(255, 255, 255, var(--text-shadow-opacity, 0%));
+    will-change: transform, scale, text-shadow;
+    backface-visibility: hidden;
 }
 
 .Interlude {

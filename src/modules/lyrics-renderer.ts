@@ -1,12 +1,35 @@
 import type { TransformedLyrics } from "../lyrics/types";
 import { get } from "../stores/settings";
+import {
+  createSpringSet,
+  setSpringGoals,
+  stepSprings,
+  applySpringStyles,
+  applyGradientProgress,
+  isEmphasized,
+  easeSinOut,
+  ScaleSpline,
+  YOffsetSpline,
+  type SpringSet,
+  type SpicySpringConfig,
+} from "./spicy-spring";
 
 type LyricState = "Idle" | "Active" | "Sung";
+
+type LetterInfo = {
+  span: HTMLSpanElement;
+  startScale: number;
+  endScale: number;
+  springs: SpringSet;
+};
 
 type SyllableInfo = {
   span: HTMLSpanElement;
   startScale: number;
   endScale: number;
+  springs: SpringSet | null;
+  emphasized: boolean;
+  letters: LetterInfo[];
 };
 
 type LineInfo = {
@@ -142,10 +165,40 @@ export default class LyricsRenderer {
           for (const s of wordSyllables) {
             const sStartTime = s.StartTime ?? startTime;
             const sEndTime = s.EndTime ?? endTime;
+            const sDuration = sEndTime - sStartTime;
+            const text = s.Text ?? "";
+            const textLen = text.length;
+            const emphasized = isEmphasized(sDuration, textLen);
 
             const span = document.createElement("span");
             span.className = "Syllable";
-            span.textContent = s.Text;
+
+            const letters: LetterInfo[] = [];
+
+            if (emphasized && textLen > 0) {
+              // Split into individual letter spans for proximity-based animation
+              const lettersArr = [...text];
+              const letterDuration = sDuration / lettersArr.length;
+
+              for (let i = 0; i < lettersArr.length; i++) {
+                const letterSpan = document.createElement("span");
+                letterSpan.className = "Letter";
+                letterSpan.textContent = lettersArr[i];
+                span.appendChild(letterSpan);
+
+                const letterStart = sStartTime + i * letterDuration;
+                const letterEnd = letterStart + letterDuration;
+
+                letters.push({
+                  span: letterSpan,
+                  startScale: (letterStart - startTime) / (duration || 1),
+                  endScale: (letterEnd - startTime) / (duration || 1),
+                  springs: createSpringSet(),
+                });
+              }
+            } else {
+              span.textContent = text;
+            }
 
             wordSpan.appendChild(span);
 
@@ -153,6 +206,9 @@ export default class LyricsRenderer {
               span,
               startScale: (sStartTime - startTime) / (duration || 1),
               endScale: (sEndTime - startTime) / (duration || 1),
+              springs: emphasized ? null : createSpringSet(),
+              emphasized,
+              letters,
             });
           }
 
@@ -206,17 +262,30 @@ export default class LyricsRenderer {
     }, USER_SCROLL_RESUME_MS);
   }
 
+  private lastFrameTime = 0;
+
   private startLoop(): void {
+    this.lastFrameTime = performance.now();
+
     const tick = () => {
       if (this.destroyed) return;
+
+      const now = performance.now();
+      const deltaTime = (now - this.lastFrameTime) / 1000;
+      this.lastFrameTime = now;
 
       const currentTimestamp = Spicetify.Player.getProgress() / 1000;
       const skipped =
         this.lastTimestamp >= 0 &&
         Math.abs(currentTimestamp - this.lastTimestamp) > 0.5;
 
+      const springConfig: SpicySpringConfig = {
+        enabled: get("springEnabled"),
+        intensity: get("springIntensity"),
+      };
+
       for (const line of this.lines) {
-        this.animateLine(line, currentTimestamp);
+        this.animateLine(line, currentTimestamp, deltaTime, springConfig);
       }
 
       this.lyricsEnded = currentTimestamp >= ((this.lyrics as any).endTime ?? Infinity);
@@ -234,7 +303,12 @@ export default class LyricsRenderer {
     this.rafId = requestAnimationFrame(tick);
   }
 
-  private animateLine(line: LineInfo, songTimestamp: number): void {
+  private animateLine(
+    line: LineInfo,
+    songTimestamp: number,
+    deltaTime: number,
+    springConfig: SpicySpringConfig
+  ): void {
     const relativeTime = songTimestamp - line.startTime;
     const pastStart = relativeTime >= 0;
     const beforeEnd = relativeTime <= line.duration;
@@ -254,6 +328,27 @@ export default class LyricsRenderer {
     if (line.isSyllableType && line.syllables.length > 0 && line.duration > 0) {
       const timeScale = clamp(relativeTime / line.duration, 0, 1);
 
+      // Find active letter index for proximity-based animation
+      let activeLetterIdx = -1;
+      if (stateNow === "Active") {
+        for (const syl of line.syllables) {
+          if (syl.emphasized && syl.letters.length > 0) {
+            for (let li = 0; li < syl.letters.length; li++) {
+              const ltr = syl.letters[li];
+              const ltrProgress = clamp(
+                (timeScale - ltr.startScale) / (ltr.endScale - ltr.startScale || 0.01),
+                0, 1
+              );
+              if (ltrProgress > 0 && ltrProgress < 1) {
+                activeLetterIdx = li;
+                break;
+              }
+            }
+            if (activeLetterIdx >= 0) break;
+          }
+        }
+      }
+
       for (const syl of line.syllables) {
         const sylDuration = syl.endScale - syl.startScale || 0.01;
         const sylProgress = clamp(
@@ -261,9 +356,113 @@ export default class LyricsRenderer {
           0,
           1
         );
+
+        // Gradient progress (always applied)
         const pct = sylProgress * 100;
         syl.span.style.setProperty("--char-progress", `${pct}%`);
         syl.span.style.setProperty("--char-progress-2", `${pct > 0 ? pct + 20 : 0}%`);
+
+        // Letter-level animation for emphasized syllables
+        if (springConfig.enabled && syl.emphasized && syl.letters.length > 0) {
+          // Find active letter index and its percentage
+          let activeLetterIndex = -1;
+          let activeLetterPercentage = 0;
+          if (stateNow === "Active") {
+            for (let li = 0; li < syl.letters.length; li++) {
+              const ltr = syl.letters[li];
+              const ltrDuration = ltr.endScale - ltr.startScale || 0.01;
+              const ltrProg = clamp(
+                (timeScale - ltr.startScale) / ltrDuration,
+                0, 1
+              );
+              if (ltrProg > 0 && ltrProg < 1) {
+                activeLetterIndex = li;
+                activeLetterPercentage = ltrProg;
+                break;
+              }
+            }
+          }
+
+          for (let li = 0; li < syl.letters.length; li++) {
+            const ltr = syl.letters[li];
+            const ltrDuration = ltr.endScale - ltr.startScale || 0.01;
+            const ltrProgress = clamp(
+              (timeScale - ltr.startScale) / ltrDuration,
+              0, 1
+            );
+
+            // Determine letter state
+            let ltrState: "NotSung" | "Active" | "Sung";
+            if (stateNow === "Sung") {
+              ltrState = "Sung";
+            } else if (ltrProgress > 0 && ltrProgress < 1) {
+              ltrState = "Active";
+            } else if (ltrProgress >= 1) {
+              ltrState = "Sung";
+            } else {
+              ltrState = "NotSung";
+            }
+
+            // Default to resting values
+            let targetScale = ScaleSpline.at(0);
+            let targetYOffset = YOffsetSpline.at(0);
+
+            // Apply proximity-based animation if an active letter is found
+            if (activeLetterIndex >= 0) {
+              const baseScale = ScaleSpline.at(activeLetterPercentage);
+              const baseYOffset = YOffsetSpline.at(activeLetterPercentage);
+
+              const restingScale = ScaleSpline.at(0);
+              const restingYOffset = YOffsetSpline.at(0);
+
+              const distance = Math.abs(li - activeLetterIndex);
+              const falloff = Math.max(0, 1 / (1 + distance * 0.9));
+
+              targetScale = restingScale + (baseScale - restingScale) * falloff;
+              targetYOffset = restingYOffset + (baseYOffset - restingYOffset) * falloff;
+            }
+
+            // Override for NotSung letters (use resting values)
+            if (ltrState === "NotSung") {
+              targetScale = ScaleSpline.at(0);
+              targetYOffset = YOffsetSpline.at(0);
+            }
+
+            ltr.springs.Scale.SetGoal(targetScale);
+            ltr.springs.YOffset.SetGoal(targetYOffset);
+
+            const values = stepSprings(ltr.springs, deltaTime);
+
+            // Apply with 2x Y offset for letters (GPU accelerated)
+            const intensity = springConfig.intensity;
+            const scale = 1 + (values.scale - 1) * intensity;
+            ltr.span.style.scale = `${scale}`;
+            ltr.span.style.transform = `translate3d(0, calc(var(--vl-default-font-size) * ${values.yOffset * 2 * intensity}), 0)`;
+
+            // Gradient for letter (with easeSinOut for active letter)
+            let ltrGradient: number;
+            if (ltrState === "NotSung") {
+              ltrGradient = -20;
+            } else if (ltrState === "Sung") {
+              ltrGradient = 100;
+            } else {
+              // Active letter gets eased gradient, others stay at -20
+              ltrGradient = li === activeLetterIndex
+                ? -20 + 120 * easeSinOut(activeLetterPercentage)
+                : -20;
+            }
+            ltr.span.style.setProperty("--gradient-position", `${ltrGradient}%`);
+          }
+        } else if (springConfig.enabled && syl.springs) {
+          // Regular syllable spring animation
+          const sylState = stateNow === "Active"
+            ? (sylProgress > 0 && sylProgress < 1 ? "Active" : sylProgress >= 1 ? "Sung" : "NotSung")
+            : stateNow === "Sung" ? "Sung" : "NotSung";
+
+          setSpringGoals(syl.springs, sylProgress, sylState);
+          const values = stepSprings(syl.springs, deltaTime);
+          applySpringStyles(syl.span, values, false, springConfig);
+        }
       }
     } else if (!line.isSyllableType && line.syllables.length === 0) {
       const lyricSpan = line.vocals.querySelector(".Lyric.Synced") as HTMLElement | null;
