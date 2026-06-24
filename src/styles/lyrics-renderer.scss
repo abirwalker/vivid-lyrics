@@ -82,6 +82,25 @@ html.vl-centered-text .VividLyrics-FullscreenContent .VL-FS-Line,
         opacity: 1;
     }
 
+    // Line-synced: scale on active + combined transition
+    &.LineSynced .Vocals.Lead {
+        transform-origin: left center;
+        scale: 1;
+        transition:
+            opacity 0.25s cubic-bezier(0.61, 1, 0.88, 1),
+            scale 0.2s cubic-bezier(0.37, 0, 0.63, 1);
+    }
+
+    &.LineSynced.Active .Vocals.Lead {
+        scale: 1.05;
+    }
+
+    // Non-active line-synced: force text-shadow glow off (Spicy !important reset)
+    &.LineSynced:not(.Active) .Vocals.Lead .Lyric.Synced.Line {
+        --text-shadow-blur-radius: 4px !important;
+        --text-shadow-opacity: 0% !important;
+    }
+
     & .Vocals.Background {
         opacity: 0.275;
         font-size: calc(inherit * 0.75);
@@ -110,7 +129,7 @@ html.vl-centered-text .VividLyrics-FullscreenContent .VL-FS-Line,
 
     &.Synced {
         background-image: linear-gradient(
-            90deg,
+            var(--gradient-degrees, 180deg),
             var(--vl-text-highlight) var(--line-progress, -20%),
             var(--vl-text-dim) calc(var(--line-progress, -20%) + 20%)
         );
@@ -159,7 +178,7 @@ html.vl-centered-text .VividLyrics-FullscreenContent .VL-FS-Line,
     backface-visibility: hidden;
 }
 
-.Letter, .SyncedChar {
+.Letter {
     display: inline-block;
     background-image: linear-gradient(
         90deg,

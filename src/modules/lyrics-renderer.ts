@@ -9,6 +9,10 @@ import {
   ScaleSpline,
   YOffsetSpline,
   GlowSpline,
+  LineGlowSpline,
+  GLOW_FREQUENCY,
+  GLOW_DAMPING,
+  Spring,
   type SpringSet,
   type SpicySpringConfig,
 } from "./spicy-spring";
@@ -42,6 +46,7 @@ type LineInfo = {
   state: LyricState;
   syllables: SyllableInfo[];
   isSyllableType: boolean;
+  glowSpring: Spring | null;
 };
 
 const USER_SCROLL_RESUME_MS = 3000;
@@ -91,6 +96,8 @@ export default class LyricsRenderer {
   private applyFontSize(): void {
     const scale = get("fontSize") / 100;
     this.scrollContainer.style.setProperty("--vl-font-size", String(scale));
+    const dir = get("gradientDirection");
+    this.scrollContainer.style.setProperty("--gradient-degrees", dir === "horizontal" ? "90deg" : "180deg");
   }
 
   private buildLines(): void {
@@ -130,6 +137,7 @@ export default class LyricsRenderer {
           state: "Idle",
           syllables: [],
           isSyllableType: false,
+          glowSpring: null,
         });
         continue;
       }
@@ -219,17 +227,9 @@ export default class LyricsRenderer {
         if (!text) continue;
         const span = document.createElement("span");
         span.className = "Lyric Synced Line";
-        const charSpans: HTMLSpanElement[] = [];
-        const chars = [...text];
-        for (let ci = 0; ci < chars.length; ci++) {
-          const charSpan = document.createElement("span");
-          charSpan.className = "SyncedChar";
-          charSpan.textContent = chars[ci];
-          span.appendChild(charSpan);
-          charSpans.push(charSpan);
-        }
+        span.textContent = text;
         vocals.appendChild(span);
-        (span as any)._charSpans = charSpans;
+        group.classList.add("LineSynced");
       }
 
       group.appendChild(vocals);
@@ -250,6 +250,9 @@ export default class LyricsRenderer {
         state: "Idle",
         syllables: syllableData,
         isSyllableType,
+        glowSpring: isSyllableType
+          ? null
+          : new Spring(LineGlowSpline.at(0), GLOW_FREQUENCY, GLOW_DAMPING),
       });
     }
   }
@@ -451,19 +454,20 @@ export default class LyricsRenderer {
     } else if (!line.isSyllableType && line.syllables.length === 0) {
       const lyricSpan = line.vocals.querySelector(".Lyric.Synced") as HTMLElement | null;
       if (lyricSpan && line.duration > 0) {
-        const charSpans = (lyricSpan as any)._charSpans as HTMLSpanElement[] | undefined;
-        if (charSpans && charSpans.length > 0) {
-          const totalChars = charSpans.length;
-          const charDuration = line.duration / totalChars;
-          for (let ci = 0; ci < charSpans.length; ci++) {
-            const charStart = ci * charDuration;
-            const charPct = -20 + clamp((relativeTime - charStart) / (charDuration || 0.01), 0, 1) * 140;
-            charSpans[ci].style.setProperty("--char-progress", `${charPct}%`);
-          }
-        } else {
-          // Fallback: single span progress
-          const linePct = -20 + clamp(relativeTime / line.duration, 0, 1) * 140;
-          lyricSpan.style.setProperty("--line-progress", `${linePct}%`);
+        const lineProgress = clamp(relativeTime / line.duration, 0, 1);
+        // Line-wide gradient progress (0% → 100% across line duration)
+        const gradientPos = lineProgress * 100;
+        lyricSpan.style.setProperty("--line-progress", `${gradientPos}%`);
+
+        // Glow spring: 0→1 at 50%→0 for text-shadow bloom (Spicy LineGlowSpline)
+        if (springConfig.enabled && line.glowSpring) {
+          const targetGlow = stateNow === "Active"
+            ? LineGlowSpline.at(lineProgress)
+            : 0;
+          line.glowSpring.SetGoal(targetGlow);
+          const currentGlow = line.glowSpring.Step(deltaTime);
+          lyricSpan.style.setProperty("--text-shadow-blur-radius", `${4 + 8 * currentGlow}px`);
+          lyricSpan.style.setProperty("--text-shadow-opacity", `${currentGlow * 50}%`);
         }
       }
     }

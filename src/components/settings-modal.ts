@@ -243,6 +243,18 @@ function buildContent(): HTMLElement {
         control: makeToggle(s.springEnabled, (v) => set("springEnabled", v)),
       },
       {
+        label: "Line Gradient Direction",
+        desc: "Direction of the highlight sweep",
+        control: makeSelect(
+          [
+            { label: "Top to Bottom", value: "vertical" },
+            { label: "Left to Right", value: "horizontal" },
+          ],
+          s.gradientDirection,
+          (v) => set("gradientDirection", v as Settings["gradientDirection"]),
+        ),
+      },
+      {
         label: "Spring Intensity",
         desc: "Motion strength (0-2x)",
         control: makeSlider(0, 2, 0.1, s.springIntensity, (v) =>

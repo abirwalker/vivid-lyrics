@@ -264,9 +264,17 @@ const GlowRange = [
   { Time: 1, Value: 0 },
 ];
 
+// Line glow: 0 → 1 (at 50%) → 0 (for line-synced lyrics)
+const LineGlowRange = [
+  { Time: 0, Value: 0 },
+  { Time: 0.5, Value: 1 },
+  { Time: 1, Value: 0 },
+];
+
 const ScaleSpline = makeSpline(ScaleRange);
 const YOffsetSpline = makeSpline(YOffsetRange);
 const GlowSpline = makeSpline(GlowRange);
+const LineGlowSpline = makeSpline(LineGlowRange);
 
 // Spring damping/frequency
 const SCALE_DAMPING = 0.6;
@@ -364,5 +372,6 @@ export function easeSinOut(t: number): number {
 }
 
 // Re-export spline for external use
-export { makeSpline, clamp, ScaleSpline, YOffsetSpline, GlowSpline };
+export { makeSpline, clamp, ScaleSpline, YOffsetSpline, GlowSpline, LineGlowSpline, LineGlowRange, GLOW_FREQUENCY, GLOW_DAMPING };
 export type { Spline };
+export { Spring };
