@@ -26,11 +26,14 @@ export async function loadLyrics(uri: string): Promise<TransformedLyrics | null>
   currentFetchId++;
   const fetchId = currentFetchId;
 
-  emit("lyrics:loading");
   currentLyrics = null;
+  emit("lyrics:change", null);
 
   const lyrics = await fetchLyrics(uri);
-  if (fetchId !== currentFetchId) return null;
+  if (fetchId !== currentFetchId) {
+    emit("lyrics:change", null);
+    return null;
+  }
 
   currentLyrics = lyrics;
   emit("lyrics:change", lyrics);

@@ -1,9 +1,8 @@
 import type { TransformedLyrics } from "../lyrics/types";
 import { loadLyrics, onLyricsChange } from "../stores/lyrics";
-import { setPageMode } from "../stores/page";
 import { get } from "../stores/settings";
 import storage from "../utils/storage";
-import { whyamidoingthis, getNoLyricsMessage, resetNoLyricsMessage } from "../utils/no-lyrics-messages";
+import { getNoLyricsMessage, resetNoLyricsMessage } from "../utils/no-lyrics-messages";
 import LyricsRenderer from "../modules/lyrics-renderer";
 import "../styles/lyrics.scss";
 
@@ -154,7 +153,9 @@ function reactToVisibility(): void {
       loading.textContent = "Loading lyrics...";
       body!.appendChild(loading);
       const uri = getTrackUri();
-      if (uri) loadLyrics(uri);
+      if (uri) loadLyrics(uri).then((lyrics) => {
+        if (lyrics && getVisible()) onLyricsUpdate(lyrics);
+      });
     }
   } else {
     header!.appendChild(showBtn!);
@@ -209,6 +210,9 @@ async function onSongChange() {
   currentUri = uri;
   resetNoLyricsMessage();
 
+  // Always pre-load lyrics so the store has them ready
+  const loadPromise = loadLyrics(uri);
+
   if (!getVisible()) {
     reactToVisibility();
     return;
@@ -225,7 +229,11 @@ async function onSongChange() {
   body!.appendChild(loading);
   ensureInDOM();
 
-  await loadLyrics(uri);
+  const lyrics = await loadPromise;
+  // If loadLyrics returned cached lyrics without emitting, update UI directly
+  if (lyrics && getVisible()) {
+    onLyricsUpdate(lyrics);
+  }
 }
 
 function suppressNativeLyrics(container: Element) {
