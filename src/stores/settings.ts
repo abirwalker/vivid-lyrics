@@ -19,6 +19,7 @@ export type Settings = {
   springIntensity: number;
   gradientDirection: "vertical" | "horizontal";
   cardHeight: number;
+  cardScrollMode: "static" | "gentle" | "active";
 };
 
 const defaults: Settings = {
@@ -40,6 +41,7 @@ const defaults: Settings = {
   springIntensity: 1.0,
   gradientDirection: "vertical",
   cardHeight: 340,
+  cardScrollMode: "static",
 };
 
 let current: Settings = { ...defaults };

@@ -67,13 +67,21 @@ export default class LyricsRenderer {
 
   private autoScrollBlocked = false;
   private userScrollTimer: ReturnType<typeof setTimeout> | null = null;
+  private targetScrollTop = -1;
+  private scrollLerp = 0.12;
 
   private blurMap: number[];
+  private viewMode: "main" | "card";
+  private cardScrollMode: "static" | "gentle" | "active";
   constructor(
     parentContainer: HTMLElement,
     private lyrics: TransformedLyrics,
     blurMap?: number[],
+    viewMode: "main" | "card" = "main",
+    cardScrollMode: "static" | "gentle" | "active" = "static",
   ) {
+    this.viewMode = viewMode;
+    this.cardScrollMode = cardScrollMode;
     this.blurMap = blurMap ?? [0, 0, 0.5, 1, 1.5, 2];
     this.scrollContainer = document.createElement("div");
     this.scrollContainer.className = "LyricsScrollContainer";
@@ -302,6 +310,18 @@ export default class LyricsRenderer {
       this.lyricsEnded = currentTimestamp >= ((this.lyrics as any).endTime ?? Infinity);
 
       this.updateBlur();
+
+      // Smooth scroll interpolation (lerp towards target)
+      if (this.targetScrollTop >= 0) {
+        const current = this.scrollContainer.scrollTop;
+        const diff = this.targetScrollTop - current;
+        if (Math.abs(diff) > 0.5) {
+          this.scrollContainer.scrollTop = current + diff * this.scrollLerp;
+        } else {
+          this.scrollContainer.scrollTop = this.targetScrollTop;
+          this.targetScrollTop = -1;
+        }
+      }
 
       if (skipped) {
         this.forceToActive();
@@ -569,7 +589,7 @@ export default class LyricsRenderer {
 
     if (activeIdx < 0) {
       if (this.lyricsEnded) {
-        this.scrollContainer.scrollTop = this.scrollContainer.scrollHeight;
+        this.targetScrollTop = this.scrollContainer.scrollHeight;
       }
       return;
     }
@@ -577,16 +597,29 @@ export default class LyricsRenderer {
     const activeLine = this.lines[activeIdx];
     const containerRect = this.scrollContainer.getBoundingClientRect();
     const lineRect = activeLine.container.getBoundingClientRect();
-    const offset =
-      lineRect.top - containerRect.top - containerRect.height / 2 + lineRect.height / 2;
+    const lineRelativeTop = lineRect.top - containerRect.top;
+
+    if (this.viewMode === "card") {
+      const zones: Record<string, { min: number; max: number; target: number }> = {
+        static:  { min: 0.15, max: 0.7, target: 0.15 },
+        gentle:  { min: 0.25, max: 0.55, target: 0.25 },
+        active:  { min: 0.3, max: 0.45, target: 0.35 },
+      };
+      const z = zones[this.cardScrollMode] ?? zones.static;
+      if (lineRelativeTop < containerRect.height * z.min || lineRelativeTop > containerRect.height * z.max) {
+        this.targetScrollTop = this.scrollContainer.scrollTop + lineRelativeTop - containerRect.height * z.target;
+      } else {
+        return;
+      }
+    } else {
+      // Main view: center in 20-60% region (~40%)
+      const targetY = containerRect.height * 0.4;
+      this.targetScrollTop = this.scrollContainer.scrollTop + lineRelativeTop - targetY + lineRect.height / 2;
+    }
 
     if (instant) {
-      this.scrollContainer.scrollTop += offset;
-    } else {
-      this.scrollContainer.scrollTo({
-        top: this.scrollContainer.scrollTop + offset,
-        behavior: "smooth",
-      });
+      this.scrollContainer.scrollTop = this.targetScrollTop;
+      this.targetScrollTop = -1;
     }
   }
 
