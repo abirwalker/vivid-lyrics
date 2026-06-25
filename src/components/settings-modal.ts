@@ -324,7 +324,32 @@ function buildContent(): HTMLElement {
       {
         label: "Blur Effect",
         desc: "Blur distant lyrics",
-        control: makeSoon(),
+        control: (() => {
+          const blurStrengthRow = makeRow(
+            "Blur Strength",
+            "How much blur to apply",
+            makeSelect(
+              [
+                { label: "Light", value: "light" },
+                { label: "Normal", value: "normal" },
+                { label: "Heavy", value: "heavy" },
+              ],
+              s.blurStrength,
+              (v) => set("blurStrength", v as Settings["blurStrength"]),
+            ),
+          );
+          blurStrengthRow.style.display = s.blurEnabled ? "" : "none";
+          blurStrengthRow.classList.add("VL-BlurStrength");
+
+          const toggle = makeToggle(s.blurEnabled, (v) => {
+            set("blurEnabled", v);
+            blurStrengthRow.style.display = v ? "" : "none";
+          });
+
+          // inject the strength row after the toggle row at build time
+          (toggle as any)._blurStrengthRow = blurStrengthRow;
+          return toggle;
+        })(),
       },
       {
         label: "Romanization",
@@ -344,7 +369,11 @@ function buildContent(): HTMLElement {
     section.appendChild(title);
 
     for (const row of rows) {
-      section.appendChild(makeRow(row.label, row.desc, row.control));
+      const el = makeRow(row.label, row.desc, row.control);
+      section.appendChild(el);
+      // inject nested blur strength row after blur toggle
+      const nested = (row.control as any)?._blurStrengthRow;
+      if (nested) section.appendChild(nested);
     }
 
     content.appendChild(section);

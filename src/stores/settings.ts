@@ -7,6 +7,7 @@ export type Settings = {
   backgroundMode: "dynamic" | "static" | "color" | "none";
   autoScroll: boolean;
   blurEnabled: boolean;
+  blurStrength: "light" | "normal" | "heavy";
   romanization: boolean;
   fontSize: number;
   fontFamily: "default" | "spicy";
@@ -27,6 +28,7 @@ const defaults: Settings = {
   backgroundMode: "none",
   autoScroll: true,
   blurEnabled: true,
+  blurStrength: "normal",
   romanization: false,
   fontSize: 100,
   fontFamily: "default",

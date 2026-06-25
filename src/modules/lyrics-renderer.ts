@@ -526,6 +526,10 @@ export default class LyricsRenderer {
       return;
     }
 
+    const strengthMul = get("blurStrength") === "light" ? 0.5
+      : get("blurStrength") === "heavy" ? 1.5
+      : 1;
+
     for (let i = 0; i < this.lines.length; i++) {
       const line = this.lines[i];
 
@@ -544,7 +548,7 @@ export default class LyricsRenderer {
         distance = 0;
       }
 
-      const blurPx = this.blurMap[distance];
+      const blurPx = this.blurMap[distance] * strengthMul;
       let opacity = 1;
       if (distance === 1) opacity = 0.9;
       else if (distance === 2) opacity = 0.75;
