@@ -153,10 +153,12 @@ html.vl-centered-text .VividLyrics-FullscreenContent .VL-FS-Line,
 }
 
 .Word {
-    display: inline;
+    display: inline-block;
+    white-space: nowrap;
+    margin-right: 0.25em;
 
-    &::after {
-        content: " ";
+    &:last-child {
+        margin-right: 0;
     }
 }
 

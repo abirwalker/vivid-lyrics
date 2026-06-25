@@ -320,6 +320,7 @@ export default class LyricsRenderer {
     deltaTime: number,
     springConfig: SpicySpringConfig
   ): void {
+    const replacePos = this.lastTimestamp === -1;
     const relativeTime = songTimestamp - line.startTime;
     const pastStart = relativeTime >= 0;
     const beforeEnd = relativeTime <= line.duration;
@@ -426,9 +427,9 @@ export default class LyricsRenderer {
               }
             }
 
-            ltr.springs.Scale.SetGoal(targetScale);
-            ltr.springs.YOffset.SetGoal(targetYOffset);
-            ltr.springs.Glow.SetGoal(targetGlow);
+            ltr.springs.Scale.SetGoal(targetScale, replacePos);
+            ltr.springs.YOffset.SetGoal(targetYOffset, replacePos);
+            ltr.springs.Glow.SetGoal(targetGlow, replacePos);
 
             const values = stepSprings(ltr.springs, deltaTime);
 
@@ -446,7 +447,7 @@ export default class LyricsRenderer {
             ? (sylProgress > 0 && sylProgress < 1 ? "Active" : sylProgress >= 1 ? "Sung" : "NotSung")
             : stateNow === "Sung" ? "Sung" : "NotSung";
 
-          setSpringGoals(syl.springs, sylProgress, sylState);
+          setSpringGoals(syl.springs, sylProgress, sylState, replacePos);
           const values = stepSprings(syl.springs, deltaTime);
           applySpringStyles(syl.span, values);
         }
@@ -464,7 +465,7 @@ export default class LyricsRenderer {
           const targetGlow = stateNow === "Active"
             ? LineGlowSpline.at(lineProgress)
             : 0;
-          line.glowSpring.SetGoal(targetGlow);
+          line.glowSpring.SetGoal(targetGlow, replacePos);
           const currentGlow = line.glowSpring.Step(deltaTime);
           lyricSpan.style.setProperty("--text-shadow-blur-radius", `${4 + 8 * currentGlow}px`);
           lyricSpan.style.setProperty("--text-shadow-opacity", `${currentGlow * 50}%`);

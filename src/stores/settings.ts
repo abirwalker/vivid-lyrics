@@ -17,6 +17,7 @@ export type Settings = {
   springEnabled: boolean;
   springIntensity: number;
   gradientDirection: "vertical" | "horizontal";
+  cardHeight: number;
 };
 
 const defaults: Settings = {
@@ -36,6 +37,7 @@ const defaults: Settings = {
   springEnabled: true,
   springIntensity: 1.0,
   gradientDirection: "vertical",
+  cardHeight: 340,
 };
 
 let current: Settings = { ...defaults };

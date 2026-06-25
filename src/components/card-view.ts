@@ -39,10 +39,14 @@ function getTrackUri(): string | null {
 }
 
 function ensureCard(): void {
-  if (card) return;
+  if (card) {
+    card.style.setProperty("--vl-card-height", `${get("cardHeight")}px`);
+    return;
+  }
 
   card = document.createElement("div");
   card.id = "VividLyrics-Card";
+  card.style.setProperty("--vl-card-height", `${get("cardHeight")}px`);
 
   header = document.createElement("div");
   header.className = "VL-CardHeader";

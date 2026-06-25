@@ -309,19 +309,20 @@ export function setSpringGoals(
   springs: SpringSet,
   timeScale: number,
   state: "NotSung" | "Active" | "Sung",
+  replacePosition = false,
 ): void {
   if (state === "Active") {
-    springs.Scale.SetGoal(ScaleSpline.at(timeScale));
-    springs.YOffset.SetGoal(YOffsetSpline.at(timeScale));
-    springs.Glow.SetGoal(GlowSpline.at(timeScale));
+    springs.Scale.SetGoal(ScaleSpline.at(timeScale), replacePosition);
+    springs.YOffset.SetGoal(YOffsetSpline.at(timeScale), replacePosition);
+    springs.Glow.SetGoal(GlowSpline.at(timeScale), replacePosition);
   } else if (state === "NotSung") {
-    springs.Scale.SetGoal(ScaleSpline.at(0));
-    springs.YOffset.SetGoal(YOffsetSpline.at(0));
-    springs.Glow.SetGoal(GlowSpline.at(0));
+    springs.Scale.SetGoal(ScaleSpline.at(0), replacePosition);
+    springs.YOffset.SetGoal(YOffsetSpline.at(0), replacePosition);
+    springs.Glow.SetGoal(GlowSpline.at(0), replacePosition);
   } else {
-    springs.Scale.SetGoal(ScaleSpline.at(1));
-    springs.YOffset.SetGoal(YOffsetSpline.at(1));
-    springs.Glow.SetGoal(GlowSpline.at(1));
+    springs.Scale.SetGoal(ScaleSpline.at(1), replacePosition);
+    springs.YOffset.SetGoal(YOffsetSpline.at(1), replacePosition);
+    springs.Glow.SetGoal(GlowSpline.at(1), replacePosition);
   }
 }
 

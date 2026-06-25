@@ -261,6 +261,14 @@ function buildContent(): HTMLElement {
           set("springIntensity", v),
         ),
       },
+      {
+        label: "Card Height",
+        desc: "NPV card max height in pixels",
+        control: makeSlider(200, 600, 10, s.cardHeight, (v) => {
+          set("cardHeight", v);
+          document.getElementById("VividLyrics-Card")?.style.setProperty("--vl-card-height", `${v}px`);
+        }),
+      },
     ],
     Background: [
       {
