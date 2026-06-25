@@ -312,7 +312,9 @@ function buildContent(): HTMLElement {
       {
         label: "Glow Intensity",
         desc: "Strength of the glow effect",
-        control: makeSoon(),
+        control: makeSlider(0, 2, 0.1, s.glowIntensity, (v) =>
+          set("glowIntensity", v),
+        ),
       },
       {
         label: "Spotlight Words",

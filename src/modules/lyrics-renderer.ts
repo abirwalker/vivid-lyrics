@@ -434,10 +434,11 @@ export default class LyricsRenderer {
             const values = stepSprings(ltr.springs, deltaTime);
 
             // Spicy 1:1 letter application: raw spring values, no intensity multiplier
+            const gi = get("glowIntensity");
             ltr.span.style.scale = `${values.scale}`;
             ltr.span.style.transform = `translate3d(0, calc(var(--vl-default-font-size) * ${values.yOffset * 2}), 0)`;
-            ltr.span.style.setProperty("--text-shadow-blur-radius", `${4 + 12 * values.glow}px`);
-            ltr.span.style.setProperty("--text-shadow-opacity", `${values.glow * 185}%`);
+            ltr.span.style.setProperty("--text-shadow-blur-radius", `${4 + 12 * values.glow * gi}px`);
+            ltr.span.style.setProperty("--text-shadow-opacity", `${Math.min(values.glow * 185 * gi, 100)}%`);
           }
         }
 
@@ -449,7 +450,7 @@ export default class LyricsRenderer {
 
           setSpringGoals(syl.springs, sylProgress, sylState, replacePos);
           const values = stepSprings(syl.springs, deltaTime);
-          applySpringStyles(syl.span, values);
+          applySpringStyles(syl.span, values, get("glowIntensity"));
         }
       }
     } else if (!line.isSyllableType && line.syllables.length === 0) {
@@ -462,13 +463,14 @@ export default class LyricsRenderer {
 
         // Glow spring: 0→1 at 50%→0 for text-shadow bloom (Spicy LineGlowSpline)
         if (springConfig.enabled && line.glowSpring) {
+          const gi = get("glowIntensity");
           const targetGlow = stateNow === "Active"
             ? LineGlowSpline.at(lineProgress)
             : 0;
           line.glowSpring.SetGoal(targetGlow, replacePos);
           const currentGlow = line.glowSpring.Step(deltaTime);
-          lyricSpan.style.setProperty("--text-shadow-blur-radius", `${4 + 8 * currentGlow}px`);
-          lyricSpan.style.setProperty("--text-shadow-opacity", `${currentGlow * 50}%`);
+          lyricSpan.style.setProperty("--text-shadow-blur-radius", `${4 + 8 * currentGlow * gi}px`);
+          lyricSpan.style.setProperty("--text-shadow-opacity", `${Math.min(currentGlow * 50 * gi, 100)}%`);
         }
       }
     }

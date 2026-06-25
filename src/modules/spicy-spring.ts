@@ -344,11 +344,12 @@ export function stepSprings(
 export function applySpringStyles(
   el: HTMLElement,
   values: { scale: number; yOffset: number; glow: number },
+  glowIntensity = 1,
 ): void {
   el.style.scale = `${values.scale}`;
   el.style.transform = `translate3d(0, calc(var(--vl-default-font-size) * ${values.yOffset}), 0)`;
-  el.style.setProperty("--text-shadow-blur-radius", `${4 + 2 * values.glow}px`);
-  el.style.setProperty("--text-shadow-opacity", `${Math.min(values.glow * 35, 100)}%`);
+  el.style.setProperty("--text-shadow-blur-radius", `${4 + 2 * values.glow * glowIntensity}px`);
+  el.style.setProperty("--text-shadow-opacity", `${Math.min(values.glow * 35 * glowIntensity, 100)}%`);
 }
 
 export function applyGlowStyles(
