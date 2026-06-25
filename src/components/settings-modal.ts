@@ -269,6 +269,19 @@ function buildContent(): HTMLElement {
           document.getElementById("VividLyrics-Card")?.style.setProperty("--vl-card-height", `${v}px`);
         }),
       },
+      {
+        label: "Card Scroll",
+        desc: "How NPV card follows lyrics",
+        control: makeSelect(
+          [
+            { label: "Static", value: "static" },
+            { label: "Gentle", value: "gentle" },
+            { label: "Active", value: "active" },
+          ],
+          s.cardScrollMode,
+          (v) => set("cardScrollMode", v as Settings["cardScrollMode"]),
+        ),
+      },
     ],
     Background: [
       {
