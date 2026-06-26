@@ -373,7 +373,95 @@ export function easeSinOut(t: number): number {
   return 1 - Math.cos((t * Math.PI) / 2);
 }
 
-// Re-export spline for external use
+// --- Dot animation splines (Spicy 1:1) ---
+export const DotScaleSpline = makeSpline([
+  { Time: 0, Value: 0.75 },
+  { Time: 0.7, Value: 1.05 },
+  { Time: 1, Value: 1 },
+]);
+export const DotYOffsetSpline = makeSpline([
+  { Time: 0, Value: 0 },
+  { Time: 0.9, Value: -0.12 },
+  { Time: 1, Value: 0 },
+]);
+export const DotGlowSpline = makeSpline([
+  { Time: 0, Value: 0 },
+  { Time: 0.6, Value: 1 },
+  { Time: 1, Value: 1 },
+]);
+export const DotOpacitySpline = makeSpline([
+  { Time: 0, Value: 0.35 },
+  { Time: 0.6, Value: 1 },
+  { Time: 1, Value: 1 },
+]);
+
+const DOT_SCALE_DAMPING = 0.6;
+const DOT_SCALE_FREQUENCY = 0.7;
+const DOT_YOFFSET_DAMPING = 0.4;
+const DOT_YOFFSET_FREQUENCY = 1.25;
+const DOT_GLOW_DAMPING = 0.5;
+const DOT_GLOW_FREQUENCY = 1;
+const DOT_OPACITY_DAMPING = 0.5;
+const DOT_OPACITY_FREQUENCY = 1;
+
+export type DotSpringSet = {
+  Scale: Spring;
+  YOffset: Spring;
+  Glow: Spring;
+  Opacity: Spring;
+};
+
+export function createDotSpringSet(): DotSpringSet {
+  return {
+    Scale: new Spring(DotScaleSpline.at(0), DOT_SCALE_FREQUENCY, DOT_SCALE_DAMPING),
+    YOffset: new Spring(DotYOffsetSpline.at(0), DOT_YOFFSET_FREQUENCY, DOT_YOFFSET_DAMPING),
+    Glow: new Spring(DotGlowSpline.at(0), DOT_GLOW_FREQUENCY, DOT_GLOW_DAMPING),
+    Opacity: new Spring(DotOpacitySpline.at(0), DOT_OPACITY_FREQUENCY, DOT_OPACITY_DAMPING),
+  };
+}
+
+export function setDotSpringGoals(
+  springs: DotSpringSet,
+  progress: number,
+  state: "NotSung" | "Active" | "Sung",
+  replacePosition = false,
+): void {
+  if (state === "Active") {
+    springs.Scale.SetGoal(DotScaleSpline.at(progress), replacePosition);
+    springs.YOffset.SetGoal(DotYOffsetSpline.at(progress), replacePosition);
+    springs.Glow.SetGoal(DotGlowSpline.at(progress), replacePosition);
+    springs.Opacity.SetGoal(DotOpacitySpline.at(progress), replacePosition);
+  } else if (state === "NotSung") {
+    springs.Scale.SetGoal(DotScaleSpline.at(0), replacePosition);
+    springs.YOffset.SetGoal(DotYOffsetSpline.at(0), replacePosition);
+    springs.Glow.SetGoal(DotGlowSpline.at(0), replacePosition);
+    springs.Opacity.SetGoal(DotOpacitySpline.at(0), replacePosition);
+  } else {
+    springs.Scale.SetGoal(DotScaleSpline.at(1), replacePosition);
+    springs.YOffset.SetGoal(DotYOffsetSpline.at(1), replacePosition);
+    springs.Glow.SetGoal(DotGlowSpline.at(1), replacePosition);
+    springs.Opacity.SetGoal(DotOpacitySpline.at(1), replacePosition);
+  }
+}
+
+export function stepDotSprings(
+  springs: DotSpringSet,
+  deltaTime: number,
+): {
+  scale: number;
+  yOffset: number;
+  glow: number;
+  opacity: number;
+} {
+  return {
+    scale: springs.Scale.Step(deltaTime),
+    yOffset: springs.YOffset.Step(deltaTime),
+    glow: springs.Glow.Step(deltaTime),
+    opacity: springs.Opacity.Step(deltaTime),
+  };
+}
+
+// Re-export
 export { makeSpline, clamp, ScaleSpline, YOffsetSpline, GlowSpline, LineGlowSpline, LineGlowRange, GLOW_FREQUENCY, GLOW_DAMPING };
 export type { Spline };
 export { Spring };

@@ -13,11 +13,17 @@ import {
   GLOW_FREQUENCY,
   GLOW_DAMPING,
   Spring,
+  createDotSpringSet,
+  setDotSpringGoals,
+  stepDotSprings,
   type SpringSet,
   type SpicySpringConfig,
+  type DotSpringSet,
 } from "./spicy-spring";
 
 const EMPHASIS_LONGER_THAN_MS = 1500;
+const INTERLUDE_GAP_THRESHOLD_S = 3;
+const INTERLUDE_EARLIER_BY = 0;
 
 type LyricState = "Idle" | "Active" | "Sung";
 
@@ -37,6 +43,14 @@ type SyllableInfo = {
   letters: LetterInfo[];
 };
 
+type DotInfo = {
+  span: HTMLSpanElement;
+  startTime: number;
+  endTime: number;
+  duration: number;
+  springs: DotSpringSet;
+};
+
 type LineInfo = {
   container: HTMLButtonElement;
   vocals: HTMLDivElement;
@@ -47,6 +61,7 @@ type LineInfo = {
   syllables: SyllableInfo[];
   isSyllableType: boolean;
   glowSpring: Spring | null;
+  dots?: DotInfo[];
 };
 
 const USER_SCROLL_RESUME_MS = 3000;
@@ -108,6 +123,45 @@ export default class LyricsRenderer {
     this.scrollContainer.style.setProperty("--gradient-degrees", dir === "horizontal" ? "90deg" : "180deg");
   }
 
+  private insertDynamicInterludes(content: any[]): any[] {
+    const result: any[] = [];
+    for (let i = 0; i < content.length; i++) {
+      const item = content[i];
+      if (item.Type === "Interlude") {
+        result.push(item);
+        continue;
+      }
+      const currStart = item.StartTime ?? item.Lead?.StartTime ?? 0;
+      // Intro gap before first line
+      if (result.length === 0) {
+        if (currStart >= INTERLUDE_GAP_THRESHOLD_S) {
+          result.push({
+            Type: "Interlude",
+            StartTime: 0 + INTERLUDE_EARLIER_BY,
+            EndTime: currStart + INTERLUDE_EARLIER_BY,
+            TotalTime: currStart,
+          });
+        }
+      } else {
+        const prev = result[result.length - 1];
+        if (prev.Type !== "Interlude") {
+          const prevEnd = prev.EndTime ?? prev.Lead?.EndTime ?? 0;
+          const gap = currStart - prevEnd;
+          if (gap >= INTERLUDE_GAP_THRESHOLD_S) {
+            result.push({
+              Type: "Interlude",
+              StartTime: prevEnd + INTERLUDE_EARLIER_BY,
+              EndTime: currStart + INTERLUDE_EARLIER_BY,
+              TotalTime: gap,
+            });
+          }
+        }
+      }
+      result.push(item);
+    }
+    return result;
+  }
+
   private buildLines(): void {
     if (this.lyrics.type === "Static") {
       for (const line of this.lyrics.lines) {
@@ -125,27 +179,51 @@ export default class LyricsRenderer {
       return;
     }
 
-    const content = (this.lyrics as any).content ?? [];
+    let content = (this.lyrics as any).content ?? [];
+    content = this.insertDynamicInterludes(content);
     for (const item of content) {
       const group = document.createElement("button");
       group.className = "VocalsGroup";
 
       if (item.Type === "Interlude") {
+        group.classList.add("InterludeLine");
         const interlude = document.createElement("div");
         interlude.className = "Interlude";
-        interlude.textContent = "...";
+        const dotGroup = document.createElement("div");
+        dotGroup.className = "dotGroup";
+        const itemStart = item.StartTime ?? 0;
+        const itemEnd = item.EndTime ?? 0;
+        const totalTime = item.TotalTime ?? (itemEnd - itemStart);
+        const dotDuration = totalTime / 3;
+        const dots: DotInfo[] = [];
+        for (let d = 0; d < 3; d++) {
+          const dot = document.createElement("span");
+          dot.className = "dot";
+          const dtStart = itemStart + dotDuration * d;
+          const dtEnd = d < 2 ? itemStart + dotDuration * (d + 1) : itemEnd;
+          dotGroup.appendChild(dot);
+          dots.push({
+            span: dot,
+            startTime: dtStart,
+            endTime: dtEnd,
+            duration: dtEnd - dtStart,
+            springs: createDotSpringSet(),
+          });
+        }
+        interlude.appendChild(dotGroup);
         group.appendChild(interlude);
         this.lyricsContainer.appendChild(group);
         this.lines.push({
           container: group,
           vocals: interlude as any,
-          startTime: item.StartTime ?? 0,
-          endTime: item.EndTime ?? 0,
-          duration: (item.EndTime ?? 0) - (item.StartTime ?? 0),
+          startTime: itemStart,
+          endTime: itemEnd,
+          duration: itemEnd - itemStart,
           state: "Idle",
           syllables: [],
           isSyllableType: false,
           glowSpring: null,
+          dots,
         });
         continue;
       }
@@ -474,6 +552,24 @@ export default class LyricsRenderer {
         }
       }
     } else if (!line.isSyllableType && line.syllables.length === 0) {
+      // Interlude dots animation (Spicy 1:1 with per-dot springs)
+      if (line.dots && line.dots.length > 0 && springConfig.enabled) {
+        for (const dot of line.dots) {
+          const dotRelTime = songTimestamp - dot.startTime;
+          const dotProgress = dot.duration > 0 ? clamp(dotRelTime / dot.duration, 0, 1) : 0;
+          const dotPastStart = dotRelTime >= 0;
+          const dotBeforeEnd = dotRelTime <= dot.duration;
+          const dotState: "NotSung" | "Active" | "Sung" = dotPastStart && dotBeforeEnd
+            ? "Active" : dotPastStart ? "Sung" : "NotSung";
+          setDotSpringGoals(dot.springs, dotProgress, dotState, replacePos);
+          const v = stepDotSprings(dot.springs, deltaTime);
+          dot.span.style.scale = `${v.scale}`;
+          dot.span.style.transform = `translate3d(0, calc(var(--vl-default-font-size) * ${v.yOffset}), 0)`;
+          dot.span.style.opacity = `${v.opacity}`;
+          dot.span.style.setProperty("--text-shadow-blur-radius", `${4 + 6 * v.glow}px`);
+          dot.span.style.setProperty("--text-shadow-opacity", `${v.glow * 90}%`);
+        }
+      }
       const lyricSpan = line.vocals.querySelector(".Lyric.Synced") as HTMLElement | null;
       if (lyricSpan && line.duration > 0) {
         const lineProgress = clamp(relativeTime / line.duration, 0, 1);

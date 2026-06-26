@@ -198,10 +198,54 @@ html.vl-centered-text .VividLyrics-FullscreenContent .VL-FS-Line,
     backface-visibility: hidden;
 }
 
+.VocalsGroup.InterludeLine {
+    overflow: visible;
+    z-index: -1;
+    transition: margin 0.25s ease;
+
+    &:not(.Active) {
+        line-height: 0 !important;
+        margin: 0 !important;
+        height: 0;
+    }
+
+    &.Active {
+        height: auto;
+        line-height: normal !important;
+        margin: 0.2cqw 0 !important;
+    }
+}
+
 .Interlude {
-    display: none;
-    text-align: center;
-    opacity: 0.3;
-    padding: 8px 0;
-    font-size: 0.8em;
+    text-align: inherit;
+    padding: 0;
+
+    .dotGroup {
+        display: inline-flex;
+        flex-direction: row;
+        align-items: center;
+        gap: clamp(0.3rem, 1.7cqw, 0.8rem);
+        scale: 0;
+        transition: scale 0.25s;
+        transform-origin: center center;
+
+        .dot {
+            --dot-size: calc(2 * clamp(0.3rem, 1.7cqw, 0.8rem));
+            width: var(--dot-size);
+            height: var(--dot-size);
+            border-radius: 100rem;
+            background-color: rgba(255, 255, 255, 0.85);
+            box-shadow: 0 0 var(--text-shadow-blur-radius, 0px) rgb(255 255 255 / var(--text-shadow-opacity, 0%));
+            will-change: transform, box-shadow;
+            backface-visibility: hidden;
+        }
+    }
+}
+
+.VocalsGroup.Active .Interlude .dotGroup {
+    scale: 1;
+}
+
+.VocalsGroup.Sung .Interlude .dotGroup {
+    scale: 0;
 }
