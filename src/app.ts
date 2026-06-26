@@ -4,6 +4,7 @@ import { setupMainPage } from "./components/main-view";
 import { setupPlaybarButton } from "./components/playbar-button";
 import { setupSettings, applyStoredFont } from "./components/settings-modal";
 import { setupProfileMenu } from "./components/profile-menu";
+import { setupDevBadge } from "./components/dev-badge";
 
 const VividLyrics = { version: "0.1.0" };
 
@@ -33,6 +34,7 @@ async function main() {
   setupSettings();
   applyStoredFont();
   setupProfileMenu();
+  setupDevBadge();
 }
 
 main();
