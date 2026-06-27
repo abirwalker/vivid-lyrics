@@ -22,6 +22,7 @@ let showBtn: HTMLButtonElement | null = null;
 let expandBtn: HTMLButtonElement | null = null;
 let closeBtn: HTMLButtonElement | null = null;
 let body: HTMLDivElement | null = null;
+let headerActions: HTMLDivElement | null = null;
 let renderer: LyricsRenderer | null = null;
 let currentLyrics: TransformedLyrics | null = null;
 let currentUri: string | null = null;
@@ -62,20 +63,21 @@ function ensureCard(): void {
   showBtn.addEventListener("click", () => setLyricsVisibility(true));
   header.appendChild(showBtn);
 
-  closeBtn = document.createElement("button");
-  closeBtn.className = "VL-CloseBtn";
-  closeBtn.title = "Hide lyrics";
-  closeBtn.innerHTML = CloseIcon;
-  closeBtn.addEventListener("click", () => setLyricsVisibility(false));
-
   expandBtn = document.createElement("button");
-  expandBtn.className = "VL-CloseBtn";
-  expandBtn.title = "Open lyrics page";
-  expandBtn.innerHTML = ExpandIcon;
+  expandBtn.className = "action-btn expand-btn";
+  expandBtn.innerHTML = `<span class="icon">${ExpandIcon}</span><span class="btn-text">Open Lyrics Page</span>`;
   expandBtn.addEventListener("click", () => {
     setLyricsVisibility(false);
     (Spicetify.Platform.History as any).push({ pathname: "/vivid-lyrics" });
   });
+
+  closeBtn = document.createElement("button");
+  closeBtn.className = "action-btn close-btn";
+  closeBtn.innerHTML = `<span class="icon">${CloseIcon}</span><span class="btn-text">Close</span>`;
+  closeBtn.addEventListener("click", () => setLyricsVisibility(false));
+
+  headerActions = document.createElement("div");
+  headerActions.className = "VL-HeaderActions";
 
   card.appendChild(header);
 
@@ -142,8 +144,9 @@ function reactToVisibility(): void {
   const visible = getVisible();
 
   if (visible) {
-    header!.appendChild(expandBtn!);
-    header!.appendChild(closeBtn!);
+    headerActions!.appendChild(expandBtn!);
+    headerActions!.appendChild(closeBtn!);
+    header!.appendChild(headerActions!);
     showBtn!.remove();
     body!.style.display = "";
 
@@ -163,8 +166,7 @@ function reactToVisibility(): void {
     }
   } else {
     header!.appendChild(showBtn!);
-    closeBtn!.remove();
-    expandBtn!.remove();
+    headerActions!.remove();
     clearBody();
     body!.style.display = "none";
   }
@@ -174,8 +176,9 @@ function reactToVisibility(): void {
 
 function showNoLyrics(): void {
   ensureCard();
-  header!.appendChild(expandBtn!);
-  header!.appendChild(closeBtn!);
+  headerActions!.appendChild(expandBtn!);
+  headerActions!.appendChild(closeBtn!);
+  header!.appendChild(headerActions!);
   showBtn!.remove();
   clearBody();
   const container = document.createElement("div");
@@ -223,8 +226,9 @@ async function onSongChange() {
   }
 
   ensureCard();
-  header!.appendChild(expandBtn!);
-  header!.appendChild(closeBtn!);
+  headerActions!.appendChild(expandBtn!);
+  headerActions!.appendChild(closeBtn!);
+  header!.appendChild(headerActions!);
   showBtn!.remove();
   clearBody();
   const loading = document.createElement("div");
@@ -287,6 +291,7 @@ function observeNPV() {
         showBtn = null;
         expandBtn = null;
         closeBtn = null;
+        headerActions = null;
         body = null;
       };
     } else if (!el && current) {

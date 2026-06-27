@@ -40,43 +40,107 @@
         color: var(--text-base);
     }
 
-    .VL-ShowBtn,
-    .VL-CloseBtn,
-    .VL-CinemaBtn {
-        display: inline-flex;
+    .VL-HeaderActions {
+        display: flex;
+        gap: 0;
+        margin-left: auto;
+        background: transparent;
+    }
+
+    .action-btn {
+        height: 28px;
+        width: 28px;
+        min-width: 0;
+        padding: 0;
+        margin: 0;
+        border: none;
+        border-radius: 14px;
+        display: flex;
         align-items: center;
         justify-content: center;
-        width: 30px;
-        height: 30px;
-        min-width: 30px;
-        min-height: 30px;
-        padding: 0;
-        background-color: transparent !important;
-        border: none !important;
-        border-radius: 9999px;
         cursor: pointer;
-        color: var(--text-base);
+        overflow: hidden;
+        background: transparent;
+        color: var(--text-subdued, #b3b3b3);
         transition:
-            background-color 0.1s ease,
-            transform 0.1s ease;
+            width 0.25s cubic-bezier(0.4, 0, 0.2, 1),
+            background-color 0.2s ease,
+            color 0.2s ease;
         flex-shrink: 0;
+        box-sizing: border-box;
+        outline: none;
 
-        svg {
-            fill: currentColor;
+        .icon {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+
+            svg {
+                fill: currentColor;
+                display: block;
+                width: 14px;
+                height: 14px;
+            }
+        }
+    }
+
+    .expand-btn {
+        padding: 0 7px;
+        justify-content: flex-start;
+
+        .btn-text {
+            font-size: 12px;
+            font-weight: 500;
+            margin-left: 8px;
+            opacity: 0;
+            transition: opacity 0.15s ease;
+            white-space: nowrap;
             flex-shrink: 0;
         }
 
         &:hover {
-            background-color: rgba(255, 255, 255, 0.1) !important;
-            transform: scale(1.1);
+            width: 132px;
+            background-color: rgba(255, 255, 255, 0.1);
+            color: var(--text-base, #fff);
+
+            .btn-text {
+                opacity: 1;
+                transition-delay: 0.08s;
+            }
+        }
+    }
+
+    .close-btn {
+        padding: 0 7px;
+        justify-content: flex-start;
+
+        .btn-text {
+            font-size: 12px;
+            font-weight: 500;
+            margin-left: 8px;
+            opacity: 0;
+            transition: opacity 0.15s ease;
+            white-space: nowrap;
+            flex-shrink: 0;
         }
 
-        &:active {
-            transform: scale(0.95);
+        &:hover {
+            width: 68px;
+            background-color: rgba(255, 255, 255, 0.1);
+            color: var(--text-base, #fff);
+
+            .btn-text {
+                opacity: 1;
+                transition-delay: 0.08s;
+            }
         }
     }
 
     .VL-ShowBtn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
         width: auto;
         height: auto;
         min-width: 0;
@@ -88,6 +152,12 @@
         font-weight: 600;
         color: var(--text-base, #fff);
         white-space: nowrap;
+        background-color: transparent !important;
+        cursor: pointer;
+
+        &:hover {
+            background-color: rgba(255, 255, 255, 0.1) !important;
+        }
     }
 
     .VL-LyricsBody {
