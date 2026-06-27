@@ -243,6 +243,18 @@ function buildContent(): HTMLElement {
         control: makeToggle(s.springEnabled, (v) => set("springEnabled", v)),
       },
       {
+        label: "Spring Version",
+        desc: "Animation tuning style",
+        control: makeSelect(
+          [
+            { label: "Legacy", value: "legacy" },
+            { label: "Current", value: "current" },
+          ],
+          s.springMode,
+          (v) => set("springMode", v as "legacy" | "current"),
+        ),
+      },
+      {
         label: "Line Gradient Direction",
         desc: "Direction of the highlight sweep",
         control: makeSelect(

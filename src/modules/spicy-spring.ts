@@ -1,6 +1,9 @@
 /**
  * Spicy Spring Engine
+ * Supports Legacy and Current spring modes
  */
+
+import { get } from "../stores/settings";
 
 // --- Cubic Spline (from cubic-spline npm) ---
 class Spline {
@@ -241,48 +244,109 @@ class Spring {
   }
 }
 
-// Scale: 0.95 → 1.025 (at 70%) → 1.0 (matches Spicy Lyrics base spline)
-// Emphasis multiplier (1.103) is applied in the renderer for letter-level stretch
-const ScaleRange = [
+// ============================================================
+// SPLINE RANGES — Legacy and Current
+// ============================================================
+
+// --- Legacy ---
+const LegacyScaleRange = [
   { Time: 0, Value: 0.95 },
   { Time: 0.7, Value: 1.025 },
   { Time: 1, Value: 1 },
 ];
-
-// YOffset: 0.01 → -0.0167 (at 90%) → 0
-const YOffsetRange = [
+const LegacyYOffsetRange = [
   { Time: 0, Value: 1 / 100 },
   { Time: 0.9, Value: -(1 / 60) },
   { Time: 1, Value: 0 },
 ];
 
-// Glow: 0 → 1 (at 15%) → 1 (at 60%) → 0 (matches Spicy Lyrics exactly)
+// --- Current ---
+const CurrentScaleRange = [
+  { Time: 0, Value: 0.95 },
+  { Time: 0.7, Value: 1.0505 },
+  { Time: 1, Value: 1 },
+];
+const CurrentLetterScaleRange = [
+  { Time: 0, Value: 0.95 },
+  { Time: 0.7, Value: 1.175 },
+  { Time: 1, Value: 1 },
+];
+const CurrentYOffsetRange = [
+  { Time: 0, Value: 1 / 100 },
+  { Time: 0.9, Value: -(1 / 60) },
+  { Time: 1, Value: 0 },
+];
+const CurrentLetterYOffsetRange = [
+  { Time: 0, Value: 1 / 100 },
+  { Time: 0.9, Value: -(1 / 56) },
+  { Time: 1, Value: 0 },
+];
+
+// --- Shared ---
 const GlowRange = [
   { Time: 0, Value: 0 },
   { Time: 0.15, Value: 1 },
   { Time: 0.6, Value: 1 },
   { Time: 1, Value: 0 },
 ];
-
-// Line glow: 0 → 1 (at 50%) → 0 (for line-synced lyrics)
 const LineGlowRange = [
   { Time: 0, Value: 0 },
   { Time: 0.5, Value: 1 },
   { Time: 1, Value: 0 },
 ];
 
-const ScaleSpline = makeSpline(ScaleRange);
-const YOffsetSpline = makeSpline(YOffsetRange);
-const GlowSpline = makeSpline(GlowRange);
-const LineGlowSpline = makeSpline(LineGlowRange);
+// ============================================================
+// PRE-BUILT SPLINES for each mode
+// ============================================================
+const LegacySplines = {
+  Scale: makeSpline(LegacyScaleRange),
+  LetterScale: makeSpline(LegacyScaleRange), // legacy uses same for both
+  YOffset: makeSpline(LegacyYOffsetRange),
+  LetterYOffset: makeSpline(LegacyYOffsetRange), // legacy uses same for both
+  Glow: makeSpline(GlowRange),
+  LineGlow: makeSpline(LineGlowRange),
+};
 
-// Spring damping/frequency
-const SCALE_DAMPING = 0.6;
-const SCALE_FREQUENCY = 0.7;
-const YOFFSET_DAMPING = 0.4;
-const YOFFSET_FREQUENCY = 1.25;
-const GLOW_DAMPING = 0.5;
-const GLOW_FREQUENCY = 1;
+const CurrentSplines = {
+  Scale: makeSpline(CurrentScaleRange),
+  LetterScale: makeSpline(CurrentLetterScaleRange),
+  YOffset: makeSpline(CurrentYOffsetRange),
+  LetterYOffset: makeSpline(CurrentLetterYOffsetRange),
+  Glow: makeSpline(GlowRange),
+  LineGlow: makeSpline(LineGlowRange),
+};
+
+// ============================================================
+// SPRING CONSTANTS for each mode
+// ============================================================
+const LegacySpring = {
+  ScaleDamping: 0.6,
+  ScaleFrequency: 0.7,
+  YOffsetDamping: 0.4,
+  YOffsetFrequency: 1.25,
+  GlowDamping: 0.5,
+  GlowFrequency: 1,
+};
+
+const CurrentSpring = {
+  ScaleDamping: 0.64,
+  ScaleFrequency: 0.88,
+  YOffsetDamping: 0.4,
+  YOffsetFrequency: 1.45,
+  GlowDamping: 0.56,
+  GlowFrequency: 1.18,
+};
+
+// ============================================================
+// ACTIVE MODE ACCESSOR
+// ============================================================
+export function getActiveSplines() {
+  return get("springMode") === "current" ? CurrentSplines : LegacySplines;
+}
+
+function getActiveSpringConfig() {
+  return get("springMode") === "current" ? CurrentSpring : LegacySpring;
+}
 
 // --- Public Types ---
 export type SpicySpringConfig = {
@@ -298,10 +362,22 @@ export type SpringSet = {
 // --- Public API ---
 
 export function createSpringSet(): SpringSet {
+  const s = getActiveSplines();
+  const c = getActiveSpringConfig();
   return {
-    Scale: new Spring(ScaleSpline.at(0), SCALE_FREQUENCY, SCALE_DAMPING),
-    YOffset: new Spring(YOffsetSpline.at(0), YOFFSET_FREQUENCY, YOFFSET_DAMPING),
-    Glow: new Spring(GlowSpline.at(0), GLOW_FREQUENCY, GLOW_DAMPING),
+    Scale: new Spring(s.Scale.at(0), c.ScaleFrequency, c.ScaleDamping),
+    YOffset: new Spring(s.YOffset.at(0), c.YOffsetFrequency, c.YOffsetDamping),
+    Glow: new Spring(s.Glow.at(0), c.GlowFrequency, c.GlowDamping),
+  };
+}
+
+export function createLetterSpringSet(): SpringSet {
+  const s = getActiveSplines();
+  const c = getActiveSpringConfig();
+  return {
+    Scale: new Spring(s.LetterScale.at(0), c.ScaleFrequency, c.ScaleDamping),
+    YOffset: new Spring(s.LetterYOffset.at(0), c.YOffsetFrequency, c.YOffsetDamping),
+    Glow: new Spring(s.Glow.at(0), c.GlowFrequency, c.GlowDamping),
   };
 }
 
@@ -311,18 +387,19 @@ export function setSpringGoals(
   state: "NotSung" | "Active" | "Sung",
   replacePosition = false,
 ): void {
+  const s = getActiveSplines();
   if (state === "Active") {
-    springs.Scale.SetGoal(ScaleSpline.at(timeScale), replacePosition);
-    springs.YOffset.SetGoal(YOffsetSpline.at(timeScale), replacePosition);
-    springs.Glow.SetGoal(GlowSpline.at(timeScale), replacePosition);
+    springs.Scale.SetGoal(s.Scale.at(timeScale), replacePosition);
+    springs.YOffset.SetGoal(s.YOffset.at(timeScale), replacePosition);
+    springs.Glow.SetGoal(s.Glow.at(timeScale), replacePosition);
   } else if (state === "NotSung") {
-    springs.Scale.SetGoal(ScaleSpline.at(0), replacePosition);
-    springs.YOffset.SetGoal(YOffsetSpline.at(0), replacePosition);
-    springs.Glow.SetGoal(GlowSpline.at(0), replacePosition);
+    springs.Scale.SetGoal(s.Scale.at(0), replacePosition);
+    springs.YOffset.SetGoal(s.YOffset.at(0), replacePosition);
+    springs.Glow.SetGoal(s.Glow.at(0), replacePosition);
   } else {
-    springs.Scale.SetGoal(ScaleSpline.at(1), replacePosition);
-    springs.YOffset.SetGoal(YOffsetSpline.at(1), replacePosition);
-    springs.Glow.SetGoal(GlowSpline.at(1), replacePosition);
+    springs.Scale.SetGoal(s.Scale.at(1), replacePosition);
+    springs.YOffset.SetGoal(s.YOffset.at(1), replacePosition);
+    springs.Glow.SetGoal(s.Glow.at(1), replacePosition);
   }
 }
 
@@ -373,7 +450,7 @@ export function easeSinOut(t: number): number {
   return 1 - Math.cos((t * Math.PI) / 2);
 }
 
-// --- Dot animation splines (Spicy 1:1) ---
+// --- Dot animation splines (same for both modes) ---
 export const DotScaleSpline = makeSpline([
   { Time: 0, Value: 0.75 },
   { Time: 0.7, Value: 1.05 },
@@ -462,6 +539,6 @@ export function stepDotSprings(
 }
 
 // Re-export
-export { makeSpline, clamp, ScaleSpline, YOffsetSpline, GlowSpline, LineGlowSpline, LineGlowRange, GLOW_FREQUENCY, GLOW_DAMPING };
+export { makeSpline, clamp, LineGlowRange };
 export type { Spline };
 export { Spring };

@@ -131,6 +131,12 @@ function hide(): void {
   portal.style.display = "none";
   document.removeEventListener("keydown", onKeyDown);
   document.removeEventListener("fullscreenchange", onFullscreenChange);
+
+  // Destroy renderer to stop RAF loop and free GPU memory
+  if (activeRenderer) {
+    activeRenderer.destroy();
+    activeRenderer = null;
+  }
 }
 
 function enterBrowserFullscreen(): void {

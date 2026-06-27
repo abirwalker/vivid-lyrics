@@ -16,6 +16,7 @@ export type Settings = {
   centeredText: boolean;
   centeredTextCard: boolean;
   springEnabled: boolean;
+  springMode: "legacy" | "current";
   springIntensity: number;
   gradientDirection: "vertical" | "horizontal";
   cardHeight: number;
@@ -38,6 +39,7 @@ const defaults: Settings = {
   centeredText: false,
   centeredTextCard: false,
   springEnabled: true,
+  springMode: "current",
   springIntensity: 1.0,
   gradientDirection: "vertical",
   cardHeight: 340,
