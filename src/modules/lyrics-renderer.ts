@@ -106,7 +106,9 @@ export default class LyricsRenderer {
   private autoScrollBlocked = false;
   private userScrollTimer: ReturnType<typeof setTimeout> | null = null;
   private targetScrollTop = -1;
-  private scrollLerp = 0.12;
+  private scrollStart = 0;
+  private scrollStartTime = 0;
+  private scrollDuration = 0.6;
 
   private blurMap: number[];
   private viewMode: "main" | "card";
@@ -434,15 +436,20 @@ export default class LyricsRenderer {
 
       this.updateBlur(ctx);
 
-      // Smooth scroll interpolation (lerp towards target)
+      //smooth scroll
       if (this.targetScrollTop >= 0) {
-        const current = this.scrollContainer.scrollTop;
-        const diff = this.targetScrollTop - current;
-        if (Math.abs(diff) > 0.5) {
-          this.scrollContainer.scrollTop = current + diff * this.scrollLerp;
-        } else {
+        if (this.scrollStartTime === 0) {
+          this.scrollStart = this.scrollContainer.scrollTop;
+          this.scrollStartTime = currentTimestamp;
+        }
+        const elapsed = currentTimestamp - this.scrollStartTime;
+        const t = Math.min(elapsed / this.scrollDuration, 1);
+        const ease = 1 - Math.pow(1 - t, 3);
+        this.scrollContainer.scrollTop = this.scrollStart + (this.targetScrollTop - this.scrollStart) * ease;
+        if (t >= 1) {
           this.scrollContainer.scrollTop = this.targetScrollTop;
           this.targetScrollTop = -1;
+          this.scrollStartTime = 0;
         }
       }
 
@@ -731,11 +738,13 @@ export default class LyricsRenderer {
 
               const thisIdx = syl.letters.indexOf(ltr);
               const distance = Math.abs(thisIdx - activeLetterIndex);
-              const falloff = Math.max(0, 1 / (1 + distance * 0.9));
+              const isCurrent = get("springMode") === "current";
+              const falloff = Math.max(0, 1 / (1 + (isCurrent ? Math.pow(distance, 2.8) : distance * 0.9)));
+              const glowFalloff = Math.max(0, 1 / (1 + distance * 0.9));
 
               targetScale = restingScale + (baseScale - restingScale) * falloff;
               targetYOffset = restingYOffset + (baseYOffset - restingYOffset) * falloff;
-              targetGlow = restingGlow + (baseGlow - restingGlow) * falloff;
+              targetGlow = restingGlow + (baseGlow - restingGlow) * glowFalloff;
             } else {
               const ltrState = ltrProgress > 0 && ltrProgress < 1 ? "Active"
                 : ltrProgress >= 1 ? "Sung" : "NotSung";
@@ -907,6 +916,7 @@ export default class LyricsRenderer {
     if (activeIdx < 0) {
       if (this.lyricsEnded) {
         this.targetScrollTop = this.scrollContainer.scrollHeight;
+        this.scrollStartTime = 0;
       }
       return;
     }
@@ -925,6 +935,7 @@ export default class LyricsRenderer {
       const z = zones[this.cardScrollMode] ?? zones.static;
       if (lineRelativeTop < containerRect.height * z.min || lineRelativeTop > containerRect.height * z.max) {
         this.targetScrollTop = this.scrollContainer.scrollTop + lineRelativeTop - containerRect.height * z.target;
+        this.scrollStartTime = 0;
       } else {
         return;
       }
@@ -932,6 +943,7 @@ export default class LyricsRenderer {
       // Main view: center in 20-60% region (~40%)
       const targetY = containerRect.height * 0.4;
       this.targetScrollTop = this.scrollContainer.scrollTop + lineRelativeTop - targetY + lineRect.height / 2;
+      this.scrollStartTime = 0;
     }
 
     if (instant) {
