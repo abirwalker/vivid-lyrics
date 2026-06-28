@@ -183,32 +183,59 @@ function buildContent(): HTMLElement {
   const content = document.createElement("div");
   content.className = "VL-Content";
 
-  const sections: Record<
-    string,
-    { label: string; desc: string; control: HTMLElement }[]
-  > = {
-    Lyrics: [
-      {
-        label: "Auto-scroll",
-        desc: "Scroll to active line",
-        control: makeToggle(s.autoScroll, (v) => set("autoScroll", v)),
-      },
-      {
-        label: "Centered Text",
-        desc: "Center-align lyrics in main and cinema view",
-        control: makeToggle(s.centeredText, (v) => {
-          set("centeredText", v);
-          applyCenteredText(v);
-        }),
-      },
-      {
-        label: "Centered Text for NPV",
-        desc: "Center-align lyrics in Now Playing View's card-view mode",
-        control: makeToggle(s.centeredTextCard, (v) => {
-          set("centeredTextCard", v);
-          applyCenteredTextCard(v);
-        }),
-      },
+  // --- Spring conditional rows (hidden when Spicy Spring is off) ---
+  const springVersionRow = makeRow(
+    "Spring Version",
+    "Animation tuning style",
+    makeSelect(
+      [
+        { label: "Legacy", value: "legacy" },
+        { label: "Current", value: "current" },
+      ],
+      s.springMode,
+      (v) => set("springMode", v as "legacy" | "current"),
+    ),
+  );
+  const springIntensityRow = makeRow(
+    "Spring Intensity",
+    "Motion strength (0-2x)",
+    makeSlider(0, 2, 0.1, s.springIntensity, (v) =>
+      set("springIntensity", v),
+    ),
+  );
+
+  function syncSpringVisibility(): void {
+    const vis = get("springEnabled") ? "" : "none";
+    springVersionRow.style.display = vis;
+    springIntensityRow.style.display = vis;
+  }
+  syncSpringVisibility();
+
+  // --- Blur conditional row ---
+  const blurStrengthRow = makeRow(
+    "Blur Strength",
+    "How much blur to apply",
+    makeSelect(
+      [
+        { label: "Light", value: "light" },
+        { label: "Normal", value: "normal" },
+        { label: "Heavy", value: "heavy" },
+      ],
+      s.blurStrength,
+      (v) => set("blurStrength", v as Settings["blurStrength"]),
+    ),
+  );
+  blurStrengthRow.style.display = s.blurEnabled ? "" : "none";
+  blurStrengthRow.classList.add("VL-BlurStrength");
+
+  const blurToggle = makeToggle(s.blurEnabled, (v) => {
+    set("blurEnabled", v);
+    blurStrengthRow.style.display = v ? "" : "none";
+  });
+  (blurToggle as any)._blurStrengthRow = blurStrengthRow;
+
+  const sections: [string, { label: string; desc: string; control: HTMLElement; after?: HTMLElement; after2?: HTMLElement }[]][] = [
+    ["Appearance", [
       {
         label: "Font Size",
         desc: "Lyrics text size",
@@ -238,21 +265,20 @@ function buildContent(): HTMLElement {
         ),
       },
       {
-        label: "Spicy Spring",
-        desc: "Bouncy syllable animation",
-        control: makeToggle(s.springEnabled, (v) => set("springEnabled", v)),
+        label: "Centered Text",
+        desc: "Center-align lyrics in main and cinema view",
+        control: makeToggle(s.centeredText, (v) => {
+          set("centeredText", v);
+          applyCenteredText(v);
+        }),
       },
       {
-        label: "Spring Version",
-        desc: "Animation tuning style",
-        control: makeSelect(
-          [
-            { label: "Legacy", value: "legacy" },
-            { label: "Current", value: "current" },
-          ],
-          s.springMode,
-          (v) => set("springMode", v as "legacy" | "current"),
-        ),
+        label: "Centered Text for NPV",
+        desc: "Center-align lyrics in Now Playing View's card-view mode",
+        control: makeToggle(s.centeredTextCard, (v) => {
+          set("centeredTextCard", v);
+          applyCenteredTextCard(v);
+        }),
       },
       {
         label: "Line Gradient Direction",
@@ -266,13 +292,20 @@ function buildContent(): HTMLElement {
           (v) => set("gradientDirection", v as Settings["gradientDirection"]),
         ),
       },
+    ]],
+    ["Animation", [
       {
-        label: "Spring Intensity",
-        desc: "Motion strength (0-2x)",
-        control: makeSlider(0, 2, 0.1, s.springIntensity, (v) =>
-          set("springIntensity", v),
-        ),
+        label: "Spicy Spring",
+        desc: "Bouncy syllable animation",
+        control: makeToggle(s.springEnabled, (v) => {
+          set("springEnabled", v);
+          syncSpringVisibility();
+        }),
+        after: springVersionRow,
+        after2: springIntensityRow,
       },
+    ]],
+    ["NPV Card", [
       {
         label: "Card Height",
         desc: "NPV card max height in pixels",
@@ -294,24 +327,30 @@ function buildContent(): HTMLElement {
           (v) => set("cardScrollMode", v as Settings["cardScrollMode"]),
         ),
       },
-    ],
-    Background: [
+    ]],
+    ["Scroll", [
       {
-        label: "Mode",
-        desc: "Background style",
-        control: makeSelect(
-          [
-            { label: "None", value: "none" },
-            { label: "Static", value: "static" },
-            { label: "Dynamic", value: "dynamic" },
-            { label: "Color", value: "color" },
-          ],
-          s.backgroundMode,
-          (v) => set("backgroundMode", v as Settings["backgroundMode"]),
+        label: "Auto-scroll",
+        desc: "Scroll to active line",
+        control: makeToggle(s.autoScroll, (v) => set("autoScroll", v)),
+      },
+    ]],
+    ["Effects", [
+      {
+        label: "Glow Intensity",
+        desc: "Strength of the glow effect",
+        control: makeSlider(0, 2, 0.1, s.glowIntensity, (v) =>
+          set("glowIntensity", v),
         ),
       },
-    ],
-    Interface: [
+      {
+        label: "Blur Effect",
+        desc: "Blur distant lyrics",
+        control: blurToggle,
+        after: blurStrengthRow,
+      },
+    ]],
+    ["Interface", [
       {
         label: "Hide Spotify Lyrics Button",
         desc: "Hide the native lyrics button in the playbar",
@@ -332,14 +371,12 @@ function buildContent(): HTMLElement {
           (v) => set("controlsPosition", v as Settings["controlsPosition"]),
         ),
       },
-    ],
-    "Coming Soon": [
+    ]],
+    ["Coming Soon", [
       {
-        label: "Glow Intensity",
-        desc: "Strength of the glow effect",
-        control: makeSlider(0, 2, 0.1, s.glowIntensity, (v) =>
-          set("glowIntensity", v),
-        ),
+        label: "Background Mode",
+        desc: "Dynamic background animation",
+        control: makeSoon(),
       },
       {
         label: "Spotlight Words",
@@ -347,44 +384,14 @@ function buildContent(): HTMLElement {
         control: makeSoon(),
       },
       {
-        label: "Blur Effect",
-        desc: "Blur distant lyrics",
-        control: (() => {
-          const blurStrengthRow = makeRow(
-            "Blur Strength",
-            "How much blur to apply",
-            makeSelect(
-              [
-                { label: "Light", value: "light" },
-                { label: "Normal", value: "normal" },
-                { label: "Heavy", value: "heavy" },
-              ],
-              s.blurStrength,
-              (v) => set("blurStrength", v as Settings["blurStrength"]),
-            ),
-          );
-          blurStrengthRow.style.display = s.blurEnabled ? "" : "none";
-          blurStrengthRow.classList.add("VL-BlurStrength");
-
-          const toggle = makeToggle(s.blurEnabled, (v) => {
-            set("blurEnabled", v);
-            blurStrengthRow.style.display = v ? "" : "none";
-          });
-
-          // inject the strength row after the toggle row at build time
-          (toggle as any)._blurStrengthRow = blurStrengthRow;
-          return toggle;
-        })(),
-      },
-      {
         label: "Romanization",
         desc: "Show romanized text",
         control: makeSoon(),
       },
-    ],
-  };
+    ]],
+  ];
 
-  for (const [sectionTitle, rows] of Object.entries(sections)) {
+  for (const [sectionTitle, rows] of sections) {
     const section = document.createElement("div");
     section.className = "VL-Section";
 
@@ -396,9 +403,8 @@ function buildContent(): HTMLElement {
     for (const row of rows) {
       const el = makeRow(row.label, row.desc, row.control);
       section.appendChild(el);
-      // inject nested blur strength row after blur toggle
-      const nested = (row.control as any)?._blurStrengthRow;
-      if (nested) section.appendChild(nested);
+      if (row.after) section.appendChild(row.after);
+      if (row.after2) section.appendChild(row.after2);
     }
 
     content.appendChild(section);
