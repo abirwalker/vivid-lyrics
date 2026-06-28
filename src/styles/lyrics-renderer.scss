@@ -164,6 +164,7 @@ html.vl-centered-text .VividLyrics-FullscreenContent .VL-FS-Line,
 
 .Syllable {
     display: inline-block;
+    cursor: pointer;
     background-image: linear-gradient(
         90deg,
         var(--vl-text-highlight) var(--char-progress, -20%),
@@ -230,6 +231,7 @@ html.vl-centered-text .VividLyrics-FullscreenContent .VL-FS-Line,
             width: var(--dot-size);
             height: var(--dot-size);
             border-radius: 100rem;
+            cursor: pointer;
             background-color: rgba(255, 255, 255, 0.85);
             box-shadow: 0 0 var(--text-shadow-blur-radius, 0px) rgb(255 255 255 / var(--text-shadow-opacity, 0%));
         }

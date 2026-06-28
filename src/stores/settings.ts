@@ -21,6 +21,7 @@ export type Settings = {
   gradientDirection: "vertical" | "horizontal";
   cardHeight: number;
   cardScrollMode: "static" | "gentle" | "active";
+  wordSeekEnabled: boolean;
 };
 
 const defaults: Settings = {
@@ -44,6 +45,7 @@ const defaults: Settings = {
   gradientDirection: "vertical",
   cardHeight: 340,
   cardScrollMode: "static",
+  wordSeekEnabled: true,
 };
 
 let current: Settings = { ...defaults };

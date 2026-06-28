@@ -371,6 +371,11 @@ function buildContent(): HTMLElement {
           (v) => set("controlsPosition", v as Settings["controlsPosition"]),
         ),
       },
+      {
+        label: "Click to Seek",
+        desc: "Click words to seek playback",
+        control: makeToggle(s.wordSeekEnabled, (v) => set("wordSeekEnabled", v)),
+      },
     ]],
     ["Coming Soon", [
       {

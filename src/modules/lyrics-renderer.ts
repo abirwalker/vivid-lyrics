@@ -225,6 +225,11 @@ export default class LyricsRenderer {
           promoteToGPU(dot);
           const dtStart = itemStart + dotDuration * d;
           const dtEnd = d < 2 ? itemStart + dotDuration * (d + 1) : itemEnd;
+          dot.addEventListener("click", (e) => {
+            if (!get("wordSeekEnabled")) return;
+            e.stopPropagation();
+            Spicetify.Player.seek(dtStart * 1000);
+          });
           dotGroup.appendChild(dot);
           dots.push({
             span: dot,
@@ -294,6 +299,11 @@ export default class LyricsRenderer {
 
             const span = document.createElement("span");
             span.className = "Syllable";
+            span.addEventListener("click", (e) => {
+              if (!get("wordSeekEnabled")) return;
+              e.stopPropagation();
+              Spicetify.Player.seek(sStartTime * 1000);
+            });
 
             const letters: LetterInfo[] = [];
             const lettersArr = [...text];
