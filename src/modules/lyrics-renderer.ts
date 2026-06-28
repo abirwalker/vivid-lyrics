@@ -86,6 +86,12 @@ function promoteToGPU(el: HTMLElement): void {
   el.style.backfaceVisibility = "hidden";
   _gpuPromoted.add(el);
 }
+function demoteFromGPU(el: HTMLElement): void {
+  if (!_gpuPromoted.has(el)) return;
+  el.style.willChange = "";
+  el.style.backfaceVisibility = "";
+  _gpuPromoted.delete(el);
+}
 
 export default class LyricsRenderer {
   private scrollContainer: HTMLDivElement;
@@ -567,6 +573,34 @@ export default class LyricsRenderer {
     }
   }
 
+  /** Promote line elements to GPU layer for animation */
+  private promoteLine(line: LineInfo): void {
+    if (line.isSyllableType) {
+      for (const syl of line.syllables) {
+        promoteToGPU(syl.span);
+        for (const ltr of syl.letters) promoteToGPU(ltr.span);
+      }
+    } else if (line.dots) {
+      for (const dot of line.dots) promoteToGPU(dot.span);
+      const lyricSpan = line.vocals.querySelector(".Lyric.Synced") as HTMLElement | null;
+      if (lyricSpan) promoteToGPU(lyricSpan);
+    }
+  }
+
+  /** Demote line elements from GPU layer to free compositor memory */
+  private demoteLine(line: LineInfo): void {
+    if (line.isSyllableType) {
+      for (const syl of line.syllables) {
+        demoteFromGPU(syl.span);
+        for (const ltr of syl.letters) demoteFromGPU(ltr.span);
+      }
+    } else if (line.dots) {
+      for (const dot of line.dots) demoteFromGPU(dot.span);
+      const lyricSpan = line.vocals.querySelector(".Lyric.Synced") as HTMLElement | null;
+      if (lyricSpan) demoteFromGPU(lyricSpan);
+    }
+  }
+
   private animateLine(
     line: LineInfo,
     songTimestamp: number,
@@ -594,6 +628,7 @@ export default class LyricsRenderer {
 
       if (stateNow === "Idle") {
         this.snapToIdle(line);
+        this.demoteLine(line);
         return;
       }
 
@@ -602,6 +637,7 @@ export default class LyricsRenderer {
       }
 
       if (stateNow === "Active") {
+        this.promoteLine(line);
         this.scrollToActive();
       }
     }
@@ -614,6 +650,7 @@ export default class LyricsRenderer {
       if (line.settled) return;
       if (this.areSpringsSettled(line)) {
         line.settled = true;
+        this.demoteLine(line);
         return;
       }
       this.stepSungLine(line, deltaTime, springConfig, ctx!);
