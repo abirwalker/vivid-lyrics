@@ -4,6 +4,7 @@
  */
 
 import { get } from "../stores/settings";
+import { setCachedStyle, setCachedInline } from "../utils/style-cache";
 
 // --- Cubic Spline (from cubic-spline npm) ---
 class Spline {
@@ -406,16 +407,12 @@ export function setSpringGoals(
 export function stepSprings(
   springs: SpringSet,
   deltaTime: number,
-): {
-  scale: number;
-  yOffset: number;
-  glow: number;
-} {
-  return {
-    scale: springs.Scale.Step(deltaTime),
-    yOffset: springs.YOffset.Step(deltaTime),
-    glow: springs.Glow.Step(deltaTime),
-  };
+  out: { scale: number; yOffset: number; glow: number } = { scale: 0, yOffset: 0, glow: 0 },
+): { scale: number; yOffset: number; glow: number } {
+  out.scale = springs.Scale.Step(deltaTime);
+  out.yOffset = springs.YOffset.Step(deltaTime);
+  out.glow = springs.Glow.Step(deltaTime);
+  return out;
 }
 
 export function applySpringStyles(
@@ -423,10 +420,10 @@ export function applySpringStyles(
   values: { scale: number; yOffset: number; glow: number },
   glowIntensity = 1,
 ): void {
-  el.style.scale = `${values.scale}`;
-  el.style.transform = `translate3d(0, calc(var(--vl-default-font-size) * ${values.yOffset}), 0)`;
-  el.style.setProperty("--text-shadow-blur-radius", `${4 + 2 * values.glow * glowIntensity}px`);
-  el.style.setProperty("--text-shadow-opacity", `${Math.min(values.glow * 35 * glowIntensity, 100)}%`);
+  setCachedInline(el, "scale", `${values.scale}`);
+  setCachedInline(el, "transform", `translate3d(0, calc(var(--vl-default-font-size) * ${values.yOffset}), 0)`);
+  setCachedStyle(el, "--text-shadow-blur-radius", `${4 + 2 * values.glow * glowIntensity}px`);
+  setCachedStyle(el, "--text-shadow-opacity", `${Math.min(values.glow * 35 * glowIntensity, 100)}%`);
 }
 
 export function applyGlowStyles(
@@ -524,18 +521,13 @@ export function setDotSpringGoals(
 export function stepDotSprings(
   springs: DotSpringSet,
   deltaTime: number,
-): {
-  scale: number;
-  yOffset: number;
-  glow: number;
-  opacity: number;
-} {
-  return {
-    scale: springs.Scale.Step(deltaTime),
-    yOffset: springs.YOffset.Step(deltaTime),
-    glow: springs.Glow.Step(deltaTime),
-    opacity: springs.Opacity.Step(deltaTime),
-  };
+  out: { scale: number; yOffset: number; glow: number; opacity: number } = { scale: 0, yOffset: 0, glow: 0, opacity: 0 },
+): { scale: number; yOffset: number; glow: number; opacity: number } {
+  out.scale = springs.Scale.Step(deltaTime);
+  out.yOffset = springs.YOffset.Step(deltaTime);
+  out.glow = springs.Glow.Step(deltaTime);
+  out.opacity = springs.Opacity.Step(deltaTime);
+  return out;
 }
 
 // Re-export

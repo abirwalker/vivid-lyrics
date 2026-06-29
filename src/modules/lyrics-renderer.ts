@@ -1,5 +1,6 @@
 import type { TransformedLyrics } from "../lyrics/types";
 import { get } from "../stores/settings";
+import { setCachedStyle, setCachedInline, clearCachedStyle } from "../utils/style-cache";
 import {
   createSpringSet,
   createLetterSpringSet,
@@ -108,7 +109,7 @@ export default class LyricsRenderer {
   private targetScrollTop = -1;
   private scrollStart = 0;
   private scrollStartTime = 0;
-  private scrollDuration = 0.6;
+  private scrollDuration = 1;
 
   private blurMap: number[];
   private viewMode: "main" | "card";
@@ -553,39 +554,42 @@ export default class LyricsRenderer {
   /** Step springs on a Sung line until they settle, then apply final DOM state */
   private stepSungLine(line: LineInfo, deltaTime: number, springConfig: SpicySpringConfig, ctx: FrameCtx): void {
     if (line.isSyllableType && line.syllables.length > 0) {
+      const sylScratch = { scale: 0, yOffset: 0, glow: 0 };
+      const ltrScratch = { scale: 0, yOffset: 0, glow: 0 };
       for (const syl of line.syllables) {
         if (springConfig.enabled && syl.springs) {
-          const values = stepSprings(syl.springs, deltaTime);
+          const values = stepSprings(syl.springs, deltaTime, sylScratch);
           applySpringStyles(syl.span, values, ctx.glowIntensity);
         }
         for (const ltr of syl.letters) {
           if (springConfig.enabled && ltr.springs) {
-            const values = stepSprings(ltr.springs, deltaTime);
+            const values = stepSprings(ltr.springs, deltaTime, ltrScratch);
             const gi = ctx.glowIntensity;
-            ltr.span.style.scale = `${values.scale}`;
-            ltr.span.style.transform = `translate3d(0, calc(var(--vl-default-font-size) * ${values.yOffset * 2}), 0)`;
-            ltr.span.style.setProperty("--text-shadow-blur-radius", `${4 + 12 * values.glow * gi}px`);
-            ltr.span.style.setProperty("--text-shadow-opacity", `${Math.min(values.glow * 185 * gi, 100)}%`);
+            setCachedInline(ltr.span, "scale", `${values.scale}`);
+            setCachedInline(ltr.span, "transform", `translate3d(0, calc(var(--vl-default-font-size) * ${values.yOffset * 2}), 0)`);
+            setCachedStyle(ltr.span, "--text-shadow-blur-radius", `${4 + 12 * values.glow * gi}px`);
+            setCachedStyle(ltr.span, "--text-shadow-opacity", `${Math.min(values.glow * 185 * gi, 100)}%`);
           }
         }
       }
     } else if (!line.isSyllableType && line.syllables.length === 0) {
       if (line.dots && line.dots.length > 0 && springConfig.enabled) {
+        const dotScratch = { scale: 0, yOffset: 0, glow: 0, opacity: 0 };
         for (const dot of line.dots) {
-          const v = stepDotSprings(dot.springs, deltaTime);
-          dot.span.style.scale = `${v.scale}`;
-          dot.span.style.transform = `translate3d(0, calc(var(--vl-default-font-size) * ${v.yOffset}), 0)`;
-          dot.span.style.opacity = `${v.opacity}`;
-          dot.span.style.setProperty("--text-shadow-blur-radius", `${4 + 6 * v.glow}px`);
-          dot.span.style.setProperty("--text-shadow-opacity", `${v.glow * 90}%`);
+          const v = stepDotSprings(dot.springs, deltaTime, dotScratch);
+          setCachedInline(dot.span, "scale", `${v.scale}`);
+          setCachedInline(dot.span, "transform", `translate3d(0, calc(var(--vl-default-font-size) * ${v.yOffset}), 0)`);
+          setCachedInline(dot.span, "opacity", `${v.opacity}`);
+          setCachedStyle(dot.span, "--text-shadow-blur-radius", `${4 + 6 * v.glow}px`);
+          setCachedStyle(dot.span, "--text-shadow-opacity", `${v.glow * 90}%`);
         }
       }
       const lyricSpan = line.vocals.querySelector(".Lyric.Synced") as HTMLElement | null;
       if (lyricSpan && line.glowSpring && springConfig.enabled) {
         const gi = ctx.glowIntensity;
         const currentGlow = line.glowSpring.Step(deltaTime);
-        lyricSpan.style.setProperty("--text-shadow-blur-radius", `${4 + 8 * currentGlow * gi}px`);
-        lyricSpan.style.setProperty("--text-shadow-opacity", `${Math.min(currentGlow * 50 * gi, 100)}%`);
+        setCachedStyle(lyricSpan, "--text-shadow-blur-radius", `${4 + 8 * currentGlow * gi}px`);
+        setCachedStyle(lyricSpan, "--text-shadow-opacity", `${Math.min(currentGlow * 50 * gi, 100)}%`);
       }
     }
   }
@@ -677,6 +681,7 @@ export default class LyricsRenderer {
     // Active lines: full animation
     if (line.isSyllableType && line.syllables.length > 0 && line.duration > 0) {
       const timeScale = clamp(relativeTime / line.duration, 0, 1);
+      const activeScratch = { scale: 0, yOffset: 0, glow: 0 };
 
       for (const syl of line.syllables) {
         const sylDuration = syl.endScale - syl.startScale || 0.01;
@@ -688,7 +693,7 @@ export default class LyricsRenderer {
 
         // Gradient progress
         const pct = -20 + sylProgress * 140;
-        syl.span.style.setProperty("--char-progress", `${pct}%`);
+        setCachedStyle(syl.span, "--char-progress", `${pct}%`);
 
         // Per-character gradient progress + spring animation
         for (const ltr of syl.letters) {
@@ -699,7 +704,7 @@ export default class LyricsRenderer {
           );
 
           const ltrPct = -20 + ltrProgress * 140;
-          ltr.span.style.setProperty("--char-progress", `${ltrPct}%`);
+          setCachedStyle(ltr.span, "--char-progress", `${ltrPct}%`);
 
           // Spring-driven animation for emphasized chars only (Spicy 1:1)
           if (springConfig.enabled && ltr.springs) {
@@ -768,14 +773,14 @@ export default class LyricsRenderer {
             ltr.springs.YOffset.SetGoal(targetYOffset, replacePos);
             ltr.springs.Glow.SetGoal(targetGlow, replacePos);
 
-            const values = stepSprings(ltr.springs, deltaTime);
+            const values = stepSprings(ltr.springs, deltaTime, activeScratch);
 
             // Spicy 1:1 letter application: raw spring values, no intensity multiplier
             const gi = ctx!.glowIntensity;
-            ltr.span.style.scale = `${values.scale}`;
-            ltr.span.style.transform = `translate3d(0, calc(var(--vl-default-font-size) * ${values.yOffset * 2}), 0)`;
-            ltr.span.style.setProperty("--text-shadow-blur-radius", `${4 + 12 * values.glow * gi}px`);
-            ltr.span.style.setProperty("--text-shadow-opacity", `${Math.min(values.glow * 185 * gi, 100)}%`);
+            setCachedInline(ltr.span, "scale", `${values.scale}`);
+            setCachedInline(ltr.span, "transform", `translate3d(0, calc(var(--vl-default-font-size) * ${values.yOffset * 2}), 0)`);
+            setCachedStyle(ltr.span, "--text-shadow-blur-radius", `${4 + 12 * values.glow * gi}px`);
+            setCachedStyle(ltr.span, "--text-shadow-opacity", `${Math.min(values.glow * 185 * gi, 100)}%`);
           }
         }
 
@@ -785,13 +790,14 @@ export default class LyricsRenderer {
             : sylProgress >= 1 ? "Sung" : "NotSung";
 
           setSpringGoals(syl.springs, sylProgress, sylState, replacePos);
-          const values = stepSprings(syl.springs, deltaTime);
+          const values = stepSprings(syl.springs, deltaTime, activeScratch);
           applySpringStyles(syl.span, values, ctx!.glowIntensity);
         }
       }
     } else if (!line.isSyllableType && line.syllables.length === 0) {
       // Interlude dots animation (Spicy 1:1 with per-dot springs)
       if (line.dots && line.dots.length > 0 && springConfig.enabled) {
+        const activeDotScratch = { scale: 0, yOffset: 0, glow: 0, opacity: 0 };
         for (const dot of line.dots) {
           const dotRelTime = songTimestamp - dot.startTime;
           const dotProgress = dot.duration > 0 ? clamp(dotRelTime / dot.duration, 0, 1) : 0;
@@ -800,20 +806,19 @@ export default class LyricsRenderer {
           const dotState: "NotSung" | "Active" | "Sung" = dotPastStart && dotBeforeEnd
             ? "Active" : dotPastStart ? "Sung" : "NotSung";
           setDotSpringGoals(dot.springs, dotProgress, dotState, replacePos);
-          const v = stepDotSprings(dot.springs, deltaTime);
-          dot.span.style.scale = `${v.scale}`;
-          dot.span.style.transform = `translate3d(0, calc(var(--vl-default-font-size) * ${v.yOffset}), 0)`;
-          dot.span.style.opacity = `${v.opacity}`;
-          dot.span.style.setProperty("--text-shadow-blur-radius", `${4 + 6 * v.glow}px`);
-          dot.span.style.setProperty("--text-shadow-opacity", `${v.glow * 90}%`);
+          const v = stepDotSprings(dot.springs, deltaTime, activeDotScratch);
+          setCachedInline(dot.span, "scale", `${v.scale}`);
+          setCachedInline(dot.span, "transform", `translate3d(0, calc(var(--vl-default-font-size) * ${v.yOffset}), 0)`);
+          setCachedInline(dot.span, "opacity", `${v.opacity}`);
+          setCachedStyle(dot.span, "--text-shadow-blur-radius", `${4 + 6 * v.glow}px`);
+          setCachedStyle(dot.span, "--text-shadow-opacity", `${v.glow * 90}%`);
         }
       }
       const lyricSpan = line.vocals.querySelector(".Lyric.Synced") as HTMLElement | null;
       if (lyricSpan && line.duration > 0) {
         const lineProgress = clamp(relativeTime / line.duration, 0, 1);
-        // Line-wide gradient progress (0% → 100% across line duration)
         const gradientPos = lineProgress * 100;
-        lyricSpan.style.setProperty("--line-progress", `${gradientPos}%`);
+        setCachedStyle(lyricSpan, "--line-progress", `${gradientPos}%`);
 
         // Glow spring: 0→1 at 50%→0 for text-shadow bloom (Spicy LineGlowSpline)
         if (springConfig.enabled && line.glowSpring) {
@@ -821,8 +826,8 @@ export default class LyricsRenderer {
           const targetGlow = ctx!.splines.LineGlow.at(lineProgress);
           line.glowSpring.SetGoal(targetGlow, replacePos);
           const currentGlow = line.glowSpring.Step(deltaTime);
-          lyricSpan.style.setProperty("--text-shadow-blur-radius", `${4 + 8 * currentGlow * gi}px`);
-          lyricSpan.style.setProperty("--text-shadow-opacity", `${Math.min(currentGlow * 50 * gi, 100)}%`);
+          setCachedStyle(lyricSpan, "--text-shadow-blur-radius", `${4 + 8 * currentGlow * gi}px`);
+          setCachedStyle(lyricSpan, "--text-shadow-opacity", `${Math.min(currentGlow * 50 * gi, 100)}%`);
         }
       }
     }
@@ -868,6 +873,7 @@ export default class LyricsRenderer {
     if (!ctx?.blurEnabled) {
       for (let i = 0; i < this.lines.length; i++) {
         const line = this.lines[i];
+        clearCachedStyle(line.container, "--vl-blur");
         line.container.style.removeProperty("--vl-blur");
         line.container.style.opacity = "";
       }
@@ -880,6 +886,7 @@ export default class LyricsRenderer {
       const line = this.lines[i];
 
       if (reset || activeStart === -1) {
+        clearCachedStyle(line.container, "--vl-blur");
         line.container.style.removeProperty("--vl-blur");
         line.container.style.opacity = "";
         continue;
@@ -901,8 +908,8 @@ export default class LyricsRenderer {
       else if (distance === 3) opacity = 0.6;
       else if (distance >= 4) opacity = 0.45;
 
-      line.container.style.setProperty("--vl-blur", blurPx > 0 ? `${blurPx}px` : "0");
-      line.container.style.opacity = `${opacity}`;
+      setCachedStyle(line.container, "--vl-blur", blurPx > 0 ? `${blurPx}px` : "0");
+      setCachedInline(line.container, "opacity", `${opacity}`);
     }
   }
 
