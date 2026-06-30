@@ -22,6 +22,7 @@ export type Settings = {
   cardHeight: number;
   cardScrollMode: "static" | "gentle" | "active";
   wordSeekEnabled: boolean;
+  scrollMode: "smooth" | "legacy";
 };
 
 const defaults: Settings = {
@@ -46,6 +47,7 @@ const defaults: Settings = {
   cardHeight: 340,
   cardScrollMode: "static",
   wordSeekEnabled: true,
+  scrollMode: "smooth",
 };
 
 let current: Settings = { ...defaults };

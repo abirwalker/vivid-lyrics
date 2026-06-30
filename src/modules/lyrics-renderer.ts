@@ -1,6 +1,7 @@
 import type { TransformedLyrics } from "../lyrics/types";
 import { get } from "../stores/settings";
 import { setCachedStyle, setCachedInline, clearCachedStyle } from "../utils/style-cache";
+import { SmoothLyricsScroller } from "./smooth-scroller";
 import {
   createSpringSet,
   createLetterSpringSet,
@@ -114,6 +115,7 @@ export default class LyricsRenderer {
   private blurMap: number[];
   private viewMode: "main" | "card";
   private cardScrollMode: "static" | "gentle" | "active";
+  private scroller: SmoothLyricsScroller | null = null;
   constructor(
     parentContainer: HTMLElement,
     private lyrics: TransformedLyrics,
@@ -135,7 +137,25 @@ export default class LyricsRenderer {
     this.buildLines();
     parentContainer.appendChild(this.scrollContainer);
 
-    this.watchUserScroll();
+    const useScroller =
+      (viewMode === "main" && get("scrollMode") === "smooth") ||
+      (viewMode === "card" && cardScrollMode === "active");
+
+    if (useScroller) {
+      this.scrollContainer.style.overflowY = "hidden";
+      this.scrollContainer.scrollTop = 0;
+      this.lyricsContainer.style.paddingBottom = "5em";
+      this.scroller = new SmoothLyricsScroller({
+        container: this.scrollContainer,
+        track: this.lyricsContainer,
+        focusRatio: viewMode === "card" ? 0.35 : 0.42,
+        mode: "spring",
+        stiffness: 180,
+        damping: 20,
+      });
+    } else {
+      this.watchUserScroll();
+    }
 
     if (lyrics.type !== "Static") {
       this.startLoop();
@@ -437,8 +457,16 @@ export default class LyricsRenderer {
 
       this.updateBlur(ctx);
 
+      const hasActive = this.lines.some((l) => l.state === "Active");
+
       //smooth scroll
-      if (this.targetScrollTop >= 0) {
+      if (this.scroller) {
+        if (hasActive) {
+          this.scroller.update(deltaTime);
+        } else {
+          this.scroller.snapToTarget();
+        }
+      } else if (this.targetScrollTop >= 0) {
         if (this.scrollStartTime === 0) {
           this.scrollStart = this.scrollContainer.scrollTop;
           this.scrollStartTime = currentTimestamp;
@@ -921,7 +949,7 @@ export default class LyricsRenderer {
     this.lastActiveIdx = activeIdx;
 
     if (activeIdx < 0) {
-      if (this.lyricsEnded) {
+      if (this.lyricsEnded && !this.scroller) {
         this.targetScrollTop = this.scrollContainer.scrollHeight;
         this.scrollStartTime = 0;
       }
@@ -929,6 +957,13 @@ export default class LyricsRenderer {
     }
 
     const activeLine = this.lines[activeIdx];
+
+    if (this.scroller) {
+      this.scroller.setActiveLine(activeLine.container);
+      if (instant) this.scroller.snapToTarget();
+      return;
+    }
+
     const containerRect = this.scrollContainer.getBoundingClientRect();
     const lineRect = activeLine.container.getBoundingClientRect();
     const lineRelativeTop = lineRect.top - containerRect.top;
@@ -969,6 +1004,7 @@ export default class LyricsRenderer {
     this.destroyed = true;
     cancelAnimationFrame(this.rafId);
     if (this.userScrollTimer) clearTimeout(this.userScrollTimer);
+    this.scroller?.dispose();
 
     // Clear internal references so GC can collect DOM elements + springs
     this.lines = [];

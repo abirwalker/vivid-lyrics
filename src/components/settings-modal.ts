@@ -316,7 +316,7 @@ function buildContent(): HTMLElement {
       },
       {
         label: "Card Scroll",
-        desc: "How NPV card follows lyrics",
+        desc: "How NPV card follows lyrics (active uses smooth scroller)",
         control: makeSelect(
           [
             { label: "Static", value: "static" },
@@ -333,6 +333,18 @@ function buildContent(): HTMLElement {
         label: "Auto-scroll",
         desc: "Scroll to active line",
         control: makeToggle(s.autoScroll, (v) => set("autoScroll", v)),
+      },
+      {
+        label: "Scroll Style",
+        desc: "Normal or smooth scrolling",
+        control: makeSelect(
+          [
+            { label: "Normal", value: "legacy" },
+            { label: "Smooth", value: "smooth" },
+          ],
+          s.scrollMode,
+          (v) => set("scrollMode", v as Settings["scrollMode"]),
+        ),
       },
     ]],
     ["Effects", [
