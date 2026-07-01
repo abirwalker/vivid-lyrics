@@ -2,6 +2,7 @@ import type { TransformedLyrics } from "../lyrics/types";
 import { get } from "../stores/settings";
 import { setCachedStyle, setCachedInline, clearCachedStyle } from "../utils/style-cache";
 import { SmoothLyricsScroller } from "./smooth-scroller";
+import { renderLoop, type SharedFrame } from "./render-loop";
 import {
   createSpringSet,
   createLetterSpringSet,
@@ -99,7 +100,7 @@ export default class LyricsRenderer {
   private scrollContainer: HTMLDivElement;
   private lyricsContainer: HTMLDivElement;
   private lines: LineInfo[] = [];
-  private rafId = 0;
+  private unregisterFrame: (() => void) | null = null;
   private lastTimestamp = -1;
   private destroyed = false;
   private lyricsEnded = false;
@@ -158,7 +159,7 @@ export default class LyricsRenderer {
     }
 
     if (lyrics.type !== "Static") {
-      this.startLoop();
+      this.unregisterFrame = renderLoop.register((frame) => this.onFrame(frame));
     }
   }
 
@@ -419,78 +420,52 @@ export default class LyricsRenderer {
     }, USER_SCROLL_RESUME_MS);
   }
 
-  private lastFrameTime = 0;
+  private onFrame(frame: SharedFrame): void {
+    if (this.destroyed) return;
 
-  private startLoop(): void {
-    this.lastFrameTime = performance.now();
+    const currentTimestamp = frame.currentTimestamp;
+    const deltaTime = frame.deltaTime;
+    const skipped =
+      this.lastTimestamp >= 0 &&
+      Math.abs(currentTimestamp - this.lastTimestamp) > 0.5;
 
-    const tick = () => {
-      if (this.destroyed) return;
+    for (const line of this.lines) {
+      this.animateLine(line, currentTimestamp, deltaTime, frame.springConfig, frame.ctx);
+    }
 
-      const now = performance.now();
-      const deltaTime = (now - this.lastFrameTime) / 1000;
-      this.lastFrameTime = now;
+    this.lyricsEnded = currentTimestamp >= ((this.lyrics as any).endTime ?? Infinity);
 
-      const currentTimestamp = Spicetify.Player.getProgress() / 1000;
-      const skipped =
-        this.lastTimestamp >= 0 &&
-        Math.abs(currentTimestamp - this.lastTimestamp) > 0.5;
+    this.updateBlur(frame.ctx);
 
-      const springConfig: SpicySpringConfig = {
-        enabled: get("springEnabled"),
-      };
+    const hasActive = this.lines.some((l) => l.state === "Active");
 
-      const blurStrength = get("blurStrength");
-      const ctx: FrameCtx = {
-        springEnabled: get("springEnabled"),
-        glowIntensity: get("glowIntensity"),
-        blurEnabled: get("blurEnabled"),
-        blurStrengthMul: blurStrength === "light" ? 0.5 : blurStrength === "heavy" ? 1.5 : 1,
-        splines: getActiveSplines(),
-      };
-
-      for (const line of this.lines) {
-        this.animateLine(line, currentTimestamp, deltaTime, springConfig, ctx);
+    if (this.scroller) {
+      if (hasActive) {
+        this.scroller.update(deltaTime);
+      } else {
+        this.scroller.snapToTarget();
       }
-
-      this.lyricsEnded = currentTimestamp >= ((this.lyrics as any).endTime ?? Infinity);
-
-      this.updateBlur(ctx);
-
-      const hasActive = this.lines.some((l) => l.state === "Active");
-
-      //smooth scroll
-      if (this.scroller) {
-        if (hasActive) {
-          this.scroller.update(deltaTime);
-        } else {
-          this.scroller.snapToTarget();
-        }
-      } else if (this.targetScrollTop >= 0) {
-        if (this.scrollStartTime === 0) {
-          this.scrollStart = this.scrollContainer.scrollTop;
-          this.scrollStartTime = currentTimestamp;
-        }
-        const elapsed = currentTimestamp - this.scrollStartTime;
-        const t = Math.min(elapsed / this.scrollDuration, 1);
-        const ease = 1 - Math.pow(1 - t, 3);
-        this.scrollContainer.scrollTop = this.scrollStart + (this.targetScrollTop - this.scrollStart) * ease;
-        if (t >= 1) {
-          this.scrollContainer.scrollTop = this.targetScrollTop;
-          this.targetScrollTop = -1;
-          this.scrollStartTime = 0;
-        }
+    } else if (this.targetScrollTop >= 0) {
+      if (this.scrollStartTime === 0) {
+        this.scrollStart = this.scrollContainer.scrollTop;
+        this.scrollStartTime = currentTimestamp;
       }
-
-      if (skipped) {
-        this.forceToActive();
+      const elapsed = currentTimestamp - this.scrollStartTime;
+      const t = Math.min(elapsed / this.scrollDuration, 1);
+      const ease = 1 - Math.pow(1 - t, 3);
+      this.scrollContainer.scrollTop = this.scrollStart + (this.targetScrollTop - this.scrollStart) * ease;
+      if (t >= 1) {
+        this.scrollContainer.scrollTop = this.targetScrollTop;
+        this.targetScrollTop = -1;
+        this.scrollStartTime = 0;
       }
+    }
 
-      this.lastTimestamp = currentTimestamp;
-      this.rafId = requestAnimationFrame(tick);
-    };
+    if (skipped) {
+      this.forceToActive();
+    }
 
-    this.rafId = requestAnimationFrame(tick);
+    this.lastTimestamp = currentTimestamp;
   }
 
   /** Snap a line to its initial Idle state — safe because no animation has happened yet */
@@ -655,7 +630,7 @@ export default class LyricsRenderer {
     songTimestamp: number,
     deltaTime: number,
     springConfig: SpicySpringConfig,
-    ctx?: FrameCtx,
+    ctx: FrameCtx,
   ): void {
     const replacePos = this.lastTimestamp === -1;
     const relativeTime = songTimestamp - line.startTime;
@@ -682,7 +657,7 @@ export default class LyricsRenderer {
       }
 
       if (stateNow === "Sung") {
-        this.setSungGoals(line, ctx!);
+        this.setSungGoals(line, ctx);
       }
 
       if (stateNow === "Active") {
@@ -702,13 +677,14 @@ export default class LyricsRenderer {
         this.demoteLine(line);
         return;
       }
-      this.stepSungLine(line, deltaTime, springConfig, ctx!);
+      this.stepSungLine(line, deltaTime, springConfig, ctx);
       return;
     }
 
     // Active lines: full animation
+    const timeScale = line.duration > 0 ? clamp(relativeTime / line.duration, 0, 1) : 1;
+
     if (line.isSyllableType && line.syllables.length > 0 && line.duration > 0) {
-      const timeScale = clamp(relativeTime / line.duration, 0, 1);
       const activeScratch = { scale: 0, yOffset: 0, glow: 0 };
 
       for (const syl of line.syllables) {
@@ -719,12 +695,28 @@ export default class LyricsRenderer {
           1
         );
 
-        // Gradient progress
         const pct = -20 + sylProgress * 140;
         setCachedStyle(syl.span, "--char-progress", `${pct}%`);
 
-        // Per-character gradient progress + spring animation
-        for (const ltr of syl.letters) {
+        // O(n) active letter scan — hoisted out of per-letter loop
+        let activeLetterIndex = -1;
+        let activeLetterPercentage = 0;
+        for (let i = 0; i < syl.letters.length; i++) {
+          const other = syl.letters[i];
+          const otherDuration = other.endScale - other.startScale || 0.01;
+          const otherProg = clamp(
+            (timeScale - other.startScale) / otherDuration,
+            0, 1
+          );
+          if (otherProg > 0 && otherProg < 1) {
+            activeLetterIndex = i;
+            activeLetterPercentage = otherProg;
+            break;
+          }
+        }
+
+        for (let li = 0; li < syl.letters.length; li++) {
+          const ltr = syl.letters[li];
           const ltrDuration = ltr.endScale - ltr.startScale || 0.01;
           const ltrProgress = clamp(
             (timeScale - ltr.startScale) / ltrDuration,
@@ -734,43 +726,24 @@ export default class LyricsRenderer {
           const ltrPct = -20 + ltrProgress * 140;
           setCachedStyle(ltr.span, "--char-progress", `${ltrPct}%`);
 
-          // Spring-driven animation for emphasized chars only (Spicy 1:1)
           if (springConfig.enabled && ltr.springs) {
-            let activeLetterIndex = -1;
-            let activeLetterPercentage = 0;
-            for (let li = 0; li < syl.letters.length; li++) {
-              const other = syl.letters[li];
-              const otherDuration = other.endScale - other.startScale || 0.01;
-              const otherProg = clamp(
-                (timeScale - other.startScale) / otherDuration,
-                0, 1
-              );
-              if (otherProg > 0 && otherProg < 1) {
-                activeLetterIndex = li;
-                activeLetterPercentage = otherProg;
-                break;
-              }
-            }
-
-            // Spicy-style emphasis stretch multiplier: longer words (>1500ms) get 1.103x, shorter get 1.09x
             const sylDurationMs = (syl.endScale - syl.startScale) * line.duration * 1000;
             const stretchMultiplier = sylDurationMs > EMPHASIS_LONGER_THAN_MS ? 1.103 : 1.09;
 
-            let targetScale = ctx!.splines.Scale.at(0);
-            let targetYOffset = ctx!.splines.YOffset.at(0);
-            let targetGlow = ctx!.splines.Glow.at(0);
+            let targetScale = ctx.splines.Scale.at(0);
+            let targetYOffset = ctx.splines.YOffset.at(0);
+            let targetGlow = ctx.splines.Glow.at(0);
 
             if (activeLetterIndex >= 0) {
-              const baseScale = ctx!.splines.Scale.at(activeLetterPercentage) * stretchMultiplier;
-              const baseYOffset = ctx!.splines.YOffset.at(activeLetterPercentage);
-              const baseGlow = ctx!.splines.Glow.at(activeLetterPercentage);
+              const baseScale = ctx.splines.Scale.at(activeLetterPercentage) * stretchMultiplier;
+              const baseYOffset = ctx.splines.YOffset.at(activeLetterPercentage);
+              const baseGlow = ctx.splines.Glow.at(activeLetterPercentage);
 
-              const restingScale = ctx!.splines.Scale.at(0);
-              const restingYOffset = ctx!.splines.YOffset.at(0);
-              const restingGlow = ctx!.splines.Glow.at(0);
+              const restingScale = ctx.splines.Scale.at(0);
+              const restingYOffset = ctx.splines.YOffset.at(0);
+              const restingGlow = ctx.splines.Glow.at(0);
 
-              const thisIdx = syl.letters.indexOf(ltr);
-              const distance = Math.abs(thisIdx - activeLetterIndex);
+              const distance = Math.abs(li - activeLetterIndex);
               const isCurrent = get("springMode") === "current";
               const falloff = Math.max(0, 1 / (1 + (isCurrent ? Math.pow(distance, 2.8) : distance * 0.9)));
               const glowFalloff = Math.max(0, 1 / (1 + distance * 0.9));
@@ -783,17 +756,17 @@ export default class LyricsRenderer {
                 : ltrProgress >= 1 ? "Sung" : "NotSung";
 
               if (ltrState === "NotSung") {
-                targetScale = ctx!.splines.Scale.at(0);
-                targetYOffset = ctx!.splines.YOffset.at(0);
-                targetGlow = ctx!.splines.Glow.at(0);
+                targetScale = ctx.splines.Scale.at(0);
+                targetYOffset = ctx.splines.YOffset.at(0);
+                targetGlow = ctx.splines.Glow.at(0);
               } else if (ltrState === "Sung") {
-                targetScale = ctx!.splines.Scale.at(1);
-                targetYOffset = ctx!.splines.YOffset.at(1);
-                targetGlow = ctx!.splines.Glow.at(1);
+                targetScale = ctx.splines.Scale.at(1);
+                targetYOffset = ctx.splines.YOffset.at(1);
+                targetGlow = ctx.splines.Glow.at(1);
               } else {
-                targetScale = ctx!.splines.Scale.at(ltrProgress);
-                targetYOffset = ctx!.splines.YOffset.at(ltrProgress);
-                targetGlow = ctx!.splines.Glow.at(ltrProgress);
+                targetScale = ctx.splines.Scale.at(ltrProgress);
+                targetYOffset = ctx.splines.YOffset.at(ltrProgress);
+                targetGlow = ctx.splines.Glow.at(ltrProgress);
               }
             }
 
@@ -802,9 +775,7 @@ export default class LyricsRenderer {
             ltr.springs.Glow.SetGoal(targetGlow, replacePos);
 
             const values = stepSprings(ltr.springs, deltaTime, activeScratch);
-
-            // Spicy 1:1 letter application: raw spring values, no intensity multiplier
-            const gi = ctx!.glowIntensity;
+            const gi = ctx.glowIntensity;
             setCachedInline(ltr.span, "scale", `${values.scale}`);
             setCachedInline(ltr.span, "transform", `translate3d(0, calc(var(--vl-default-font-size) * ${values.yOffset * 2}), 0)`);
             setCachedStyle(ltr.span, "--text-shadow-blur-radius", `${4 + 12 * values.glow * gi}px`);
@@ -812,18 +783,16 @@ export default class LyricsRenderer {
           }
         }
 
-        // Syllable-level spring (for non-emphasized syllables)
         if (springConfig.enabled && syl.springs) {
           const sylState = sylProgress > 0 && sylProgress < 1 ? "Active"
             : sylProgress >= 1 ? "Sung" : "NotSung";
 
           setSpringGoals(syl.springs, sylProgress, sylState, replacePos);
           const values = stepSprings(syl.springs, deltaTime, activeScratch);
-          applySpringStyles(syl.span, values, ctx!.glowIntensity);
+          applySpringStyles(syl.span, values, ctx.glowIntensity);
         }
       }
     } else if (!line.isSyllableType && line.syllables.length === 0) {
-      // Interlude dots animation (Spicy 1:1 with per-dot springs)
       if (line.dots && line.dots.length > 0 && springConfig.enabled) {
         const activeDotScratch = { scale: 0, yOffset: 0, glow: 0, opacity: 0 };
         for (const dot of line.dots) {
@@ -848,10 +817,9 @@ export default class LyricsRenderer {
         const gradientPos = lineProgress * 100;
         setCachedStyle(lyricSpan, "--line-progress", `${gradientPos}%`);
 
-        // Glow spring: 0→1 at 50%→0 for text-shadow bloom (Spicy LineGlowSpline)
         if (springConfig.enabled && line.glowSpring) {
-          const gi = ctx!.glowIntensity;
-          const targetGlow = ctx!.splines.LineGlow.at(lineProgress);
+          const gi = ctx.glowIntensity;
+          const targetGlow = ctx.splines.LineGlow.at(lineProgress);
           line.glowSpring.SetGoal(targetGlow, replacePos);
           const currentGlow = line.glowSpring.Step(deltaTime);
           setCachedStyle(lyricSpan, "--text-shadow-blur-radius", `${4 + 8 * currentGlow * gi}px`);
@@ -1002,11 +970,11 @@ export default class LyricsRenderer {
 
   public destroy(): void {
     this.destroyed = true;
-    cancelAnimationFrame(this.rafId);
+    this.unregisterFrame?.();
+    this.unregisterFrame = null;
     if (this.userScrollTimer) clearTimeout(this.userScrollTimer);
     this.scroller?.dispose();
 
-    // Clear internal references so GC can collect DOM elements + springs
     this.lines = [];
     this.scrollContainer.remove();
   }
