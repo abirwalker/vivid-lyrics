@@ -255,9 +255,8 @@ function observeNPV() {
   let nativeObserver: MutationObserver | null = null;
   let lyricsUnsub: (() => void) | null = null;
 
-  const check = () => {
-    const el = document.body.querySelector(`${ANCHOR}, ${ANCHOR_FALLBACK}`);
-    console.log("[VividLyrics] observeNPV check:", el ? "found" : "not found");
+  const runCheck = () => {
+    const el = document.querySelector(`${ANCHOR}, ${ANCHOR_FALLBACK}`);
     if (el && el !== current) {
       if (current && removeCb) removeCb();
       current = el;
@@ -301,9 +300,8 @@ function observeNPV() {
     }
   };
 
-  const observer = new MutationObserver(check);
-  check();
-  observer.observe(document.body, { childList: true, subtree: true });
+  runCheck();
+  setInterval(runCheck, 1000);
 }
 
 export function setupCardView() {

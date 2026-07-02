@@ -18,7 +18,7 @@ export interface SharedFrame {
   ctx: FrameCtx;
 }
 
-type FrameListener = (frame: SharedFrame) => void;
+type FrameListener = (frame: SharedFrame) => boolean;
 
 class RenderLoopCoordinator {
   private listeners = new Map<symbol, FrameListener>();
@@ -71,8 +71,15 @@ class RenderLoopCoordinator {
       },
     };
 
-    for (const listener of Array.from(this.listeners.values())) {
-      listener(frame);
+    let anyActive = false;
+    for (const [id, listener] of this.listeners) {
+      const active = listener(frame);
+      if (active) anyActive = true;
+    }
+
+    if (!anyActive && this.listeners.size > 0) {
+      this.stop();
+      return;
     }
 
     this.rafId = requestAnimationFrame(this.tick);

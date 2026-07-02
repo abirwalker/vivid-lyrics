@@ -31,9 +31,7 @@ export class SmoothLyricsScroller {
   private userScrolling = false;
   private resumeTimer: number | null = null;
   private onUserInput: (() => void) | null = null;
-  private prevActiveLine: HTMLElement | null = null;
-
-  private resizeObserver: ResizeObserver | null = null;
+  private prevLineCenter = -1;
 
   constructor(opts: ScrollerOptions) {
     this.container = opts.container;
@@ -46,12 +44,6 @@ export class SmoothLyricsScroller {
     this.manualPauseMs = opts.manualScrollPauseMs ?? 4000;
 
     this.bindManualScrollDetection();
-    this.observeResize();
-  }
-
-  private observeResize() {
-    this.resizeObserver = new ResizeObserver(() => {});
-    this.resizeObserver.observe(this.container);
   }
 
   private clampTarget(raw: number): number {
@@ -62,15 +54,14 @@ export class SmoothLyricsScroller {
     return Math.max(minY, Math.min(0, raw));
   }
 
-  /** Call when the active line element changes. */
-  setActiveLine(lineEl: HTMLElement) {
+  /** Call when the active line changes. Uses cached positions to avoid layout reads. */
+  setActiveLine(cachedLineCenter: number, cachedContainerHeight: number) {
     if (this.userScrolling) return;
-    if (lineEl === this.prevActiveLine) return;
-    this.prevActiveLine = lineEl;
+    if (cachedLineCenter === this.prevLineCenter) return;
+    this.prevLineCenter = cachedLineCenter;
 
-    const lineCenter = lineEl.offsetTop + lineEl.offsetHeight / 2;
-    const focusOffset = this.container.clientHeight * this.focusRatio;
-    this.target = this.clampTarget(-(lineCenter - focusOffset));
+    const focusOffset = cachedContainerHeight * this.focusRatio;
+    this.target = this.clampTarget(-(cachedLineCenter - focusOffset));
 
     if (!this.initialized) {
       this.current = this.target;
@@ -127,7 +118,6 @@ export class SmoothLyricsScroller {
   }
 
   dispose() {
-    this.resizeObserver?.disconnect();
     if (this.resumeTimer) window.clearTimeout(this.resumeTimer);
     if (this.onUserInput) {
       this.container.removeEventListener("wheel", this.onUserInput);

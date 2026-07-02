@@ -1,6 +1,10 @@
 import type { TransformedLyrics } from "../lyrics/types";
 import { get } from "../stores/settings";
-import { setCachedStyle, setCachedInline, clearCachedStyle } from "../utils/style-cache";
+import {
+  setCachedStyle,
+  setCachedInline,
+  clearCachedStyle,
+} from "../utils/style-cache";
 import { SmoothLyricsScroller } from "./smooth-scroller";
 import { renderLoop, type SharedFrame } from "./render-loop";
 import {
@@ -15,6 +19,10 @@ import {
   createDotSpringSet,
   setDotSpringGoals,
   stepDotSprings,
+  DotScaleSpline,
+  DotYOffsetSpline,
+  DotGlowSpline,
+  DotOpacitySpline,
   type SpringSet,
   type SpicySpringConfig,
   type DotSpringSet,
@@ -23,6 +31,11 @@ import {
 const EMPHASIS_LONGER_THAN_MS = 1500;
 const INTERLUDE_GAP_THRESHOLD_S = 3;
 const INTERLUDE_EARLIER_BY = 0;
+/** How many lines on each side of the current playback position keep their full
+ * word/syllable/letter DOM mounted. Everything further away is swapped for a
+ * cheap placeholder — mirrors spicy-lyrics' virtualizer, just scoped to the
+ * expensive inner content instead of the whole line. */
+const VIRTUALIZATION_WINDOW = 10;
 
 type LyricState = "Idle" | "Active" | "Sung";
 
@@ -63,6 +76,19 @@ type LineInfo = {
   dots?: DotInfo[];
   /** After Active→Sung transition, springs ease out then this flips true to stop processing */
   settled: boolean;
+  /** Cached layout positions — computed once after DOM insertion, never read from live DOM during animation */
+  cachedOffsetTop: number;
+  cachedHeight: number;
+  /** Cached reference to the ".Lyric.Synced" span for line-synced lines — resolved once at build time, never queried per frame */
+  lyricSpanCache: HTMLElement | null;
+  /** Virtualization state for syllable-type lines only (word/syllable/letter trees are
+   * expensive — hundreds/thousands of nodes for a full song). When `mounted` is false,
+   * the detailed DOM lives detached inside `detailedFragment` and `vocals` shows a
+   * cheap `placeholder` span instead, height-locked to `cachedHeight` so scroll math
+   * never drifts. Non-syllable lines are never virtualized and always have `mounted: true`. */
+  mounted: boolean;
+  detailedFragment: DocumentFragment | null;
+  placeholder: HTMLElement | null;
 };
 
 /** Per-frame settings + spline snapshot — read once, passed everywhere */
@@ -78,6 +104,27 @@ const USER_SCROLL_RESUME_MS = 3000;
 
 function clamp(v: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, v));
+}
+
+// A spring's frequency/damping is tuned to look right at "normal" syllable/letter
+// speed. When a syllable or letter is much shorter than that (fast words), its own
+// goal sweeps from NotSung to Sung faster than the spring can physically travel,
+// so the glow/bounce gets clipped to a fraction of its intended peak instead of
+// just playing out quicker. Rather than changing the spring's tuning (which would
+// change how normal-speed syllables look), we feed it a proportionally larger
+// deltaTime only when the event is shorter than SPRING_REFERENCE_DURATION_S, so it
+// can still reach the same visual peak in the time available. Normal/slow
+// syllables get a factor of 1 (completely unaffected).
+const SPRING_REFERENCE_DURATION_S = 0.25;
+const MAX_SPRING_TIME_SCALE = 6;
+
+function springTimeScale(eventDurationS: number): number {
+  if (eventDurationS <= 0) return MAX_SPRING_TIME_SCALE;
+  return clamp(
+    SPRING_REFERENCE_DURATION_S / eventDurationS,
+    1,
+    MAX_SPRING_TIME_SCALE,
+  );
 }
 
 // GPU promotion — only for elements with frequent transform changes (active line dots)
@@ -105,6 +152,12 @@ export default class LyricsRenderer {
   private destroyed = false;
   private lyricsEnded = false;
   private lastActiveIdx = -1;
+  private needsScroll = false;
+  private scrollPending = false;
+  private lastBlurCleared = false;
+  private cachedContainerHeight = 0;
+  /** Index of the line the virtualization window is currently centered on. */
+  private referenceLineIndex = -1;
 
   private autoScrollBlocked = false;
   private userScrollTimer: ReturnType<typeof setTimeout> | null = null;
@@ -137,6 +190,17 @@ export default class LyricsRenderer {
     this.applyFontSize();
     this.buildLines();
     parentContainer.appendChild(this.scrollContainer);
+    this.cacheLayoutPositions();
+
+    // buildLines() leaves every line fully mounted so the measurement above sees
+    // real heights. Now that positions are cached, virtualize everything outside
+    // the initial window around the current playback position.
+    if (lyrics.type !== "Static") {
+      const initialTimestamp = (Spicetify.Player.getProgress?.() ?? 0) / 1000;
+      this.applyVirtualizationWindow(
+        this.computeReferenceIndex(initialTimestamp),
+      );
+    }
 
     const useScroller =
       (viewMode === "main" && get("scrollMode") === "smooth") ||
@@ -159,7 +223,10 @@ export default class LyricsRenderer {
     }
 
     if (lyrics.type !== "Static") {
-      this.unregisterFrame = renderLoop.register((frame) => this.onFrame(frame));
+      this.unregisterFrame = renderLoop.register((frame) => {
+        this.onFrame(frame);
+        return this.isActive();
+      });
     }
   }
 
@@ -167,7 +234,10 @@ export default class LyricsRenderer {
     const scale = get("fontSize") / 100;
     this.scrollContainer.style.setProperty("--vl-font-size", String(scale));
     const dir = get("gradientDirection");
-    this.scrollContainer.style.setProperty("--gradient-degrees", dir === "horizontal" ? "90deg" : "180deg");
+    this.scrollContainer.style.setProperty(
+      "--gradient-degrees",
+      dir === "horizontal" ? "90deg" : "180deg",
+    );
   }
 
   private insertDynamicInterludes(content: any[]): any[] {
@@ -240,7 +310,7 @@ export default class LyricsRenderer {
         dotGroup.className = "dotGroup";
         const itemStart = item.StartTime ?? 0;
         const itemEnd = item.EndTime ?? 0;
-        const totalTime = item.TotalTime ?? (itemEnd - itemStart);
+        const totalTime = item.TotalTime ?? itemEnd - itemStart;
         const dotDuration = totalTime / 3;
         const dots: DotInfo[] = [];
         for (let d = 0; d < 3; d++) {
@@ -278,6 +348,12 @@ export default class LyricsRenderer {
           glowSpring: null,
           dots,
           settled: false,
+          cachedOffsetTop: 0,
+          cachedHeight: 0,
+          lyricSpanCache: null,
+          mounted: true,
+          detailedFragment: null,
+          placeholder: null,
         });
         continue;
       }
@@ -290,7 +366,7 @@ export default class LyricsRenderer {
       vocals.className = "Vocals Lead";
 
       const syllableData: SyllableInfo[] = [];
-      const isSyllableType = !!(item.Lead?.Syllables?.length);
+      const isSyllableType = !!item.Lead?.Syllables?.length;
 
       if (isSyllableType) {
         const syllables: any[] = item.Lead.Syllables;
@@ -348,7 +424,8 @@ export default class LyricsRenderer {
                   span: letterSpan,
                   startScale: (letterStart - startTime) / (duration || 1),
                   endScale: (letterEnd - startTime) / (duration || 1),
-                  springs: emphasized && textLen > 0 ? createLetterSpringSet() : null,
+                  springs:
+                    emphasized && textLen > 0 ? createLetterSpringSet() : null,
                 });
               }
             }
@@ -377,6 +454,38 @@ export default class LyricsRenderer {
         group.classList.add("LineSynced");
       }
 
+      const lyricSpanCache = isSyllableType
+        ? null
+        : (vocals.querySelector(".Lyric.Synced") as HTMLElement | null);
+
+      // Placeholder used when this line's detailed word/syllable/letter tree is
+      // virtualized out (see LyricsRenderer.applyVirtualizationWindow). Built now
+      // but not swapped in yet — buildLines() leaves every line fully mounted so
+      // cacheLayoutPositions() measures real heights; initial virtualization runs
+      // once after that.
+      let placeholder: HTMLElement | null = null;
+      if (isSyllableType) {
+        // Mirror the real markup's word grouping (and `.Word` spacing class) so
+        // the placeholder wraps at the same points as the detailed content —
+        // otherwise its cached height could drift from what's actually rendered.
+        // A plain concatenated string here would also run every word together
+        // with no spaces ("Giveupthefight") since syllable text has none.
+        placeholder = document.createElement("span");
+        placeholder.className = "VL-LinePlaceholder";
+        const placeholderSyllables: any[] = item.Lead.Syllables;
+        let placeholderWord: HTMLSpanElement | null = null;
+        for (let i = 0; i < placeholderSyllables.length; i++) {
+          const isFirstInWord =
+            i === 0 || !placeholderSyllables[i - 1].IsPartOfWord;
+          if (isFirstInWord || !placeholderWord) {
+            placeholderWord = document.createElement("span");
+            placeholderWord.className = "Word";
+            placeholder.appendChild(placeholderWord);
+          }
+          placeholderWord.textContent += placeholderSyllables[i].Text ?? "";
+        }
+      }
+
       group.appendChild(vocals);
 
       const startTimeCopy = startTime;
@@ -399,13 +508,94 @@ export default class LyricsRenderer {
           ? null
           : new Spring(getActiveSplines().LineGlow.at(0), 1, 0.5),
         settled: false,
+        cachedOffsetTop: 0,
+        cachedHeight: 0,
+        lyricSpanCache,
+        mounted: true,
+        detailedFragment: null,
+        placeholder,
       });
     }
   }
 
+  /** Cache layout positions once after DOM insertion. Called once — never during animation. */
+  private cacheLayoutPositions(): void {
+    this.cachedContainerHeight = this.scrollContainer.clientHeight;
+    const trackEl = this.scrollContainer
+      .firstElementChild as HTMLElement | null;
+    const trackOffsetTop = trackEl?.offsetTop ?? 0;
+    for (const line of this.lines) {
+      line.cachedOffsetTop = line.container.offsetTop - trackOffsetTop;
+      line.cachedHeight = line.container.offsetHeight;
+    }
+  }
+
+  /** Index of the line whose time window contains (or is next after) `timestamp`.
+   * Used to center the virtualization window even during interludes/gaps where no
+   * line is strictly "Active". */
+  private computeReferenceIndex(timestamp: number): number {
+    for (let i = 0; i < this.lines.length; i++) {
+      if (this.lines[i].endTime > timestamp) return i;
+    }
+    return this.lines.length - 1;
+  }
+
+  /** Attach a syllable-type line's detailed word/syllable/letter tree back into
+   * `vocals`, replacing the placeholder. Cheap — just moves already-built nodes,
+   * no re-render/recreation. */
+  private mountLineDetail(line: LineInfo): void {
+    if (line.mounted || !line.detailedFragment) return;
+    if (line.placeholder && line.placeholder.parentNode === line.vocals) {
+      line.vocals.removeChild(line.placeholder);
+    }
+    line.vocals.appendChild(line.detailedFragment);
+    line.vocals.style.minHeight = "";
+    line.mounted = true;
+  }
+
+  /** Detach a syllable-type line's detailed tree into an in-memory fragment and
+   * show a lightweight placeholder instead. `vocals` gets an explicit min-height
+   * matching the cached measurement so removing hundreds of nodes never shifts
+   * any other line's scroll position. */
+  private unmountLineDetail(line: LineInfo): void {
+    if (!line.mounted || !line.placeholder) return;
+    if (!line.detailedFragment)
+      line.detailedFragment = document.createDocumentFragment();
+    while (line.vocals.firstChild) {
+      line.detailedFragment.appendChild(line.vocals.firstChild);
+    }
+    line.vocals.style.minHeight = `${line.cachedHeight}px`;
+    line.vocals.appendChild(line.placeholder);
+    line.mounted = false;
+  }
+
+  /** Mount/unmount syllable-type lines' detailed DOM based on distance from
+   * `referenceIndex`. Runs every frame but is a no-op unless a line actually
+   * crosses the window boundary. */
+  private applyVirtualizationWindow(referenceIndex: number): void {
+    this.referenceLineIndex = referenceIndex;
+    for (let i = 0; i < this.lines.length; i++) {
+      const line = this.lines[i];
+      if (!line.isSyllableType) continue;
+      const withinWindow =
+        Math.abs(i - referenceIndex) <= VIRTUALIZATION_WINDOW;
+      if (withinWindow && !line.mounted) {
+        this.mountLineDetail(line);
+      } else if (!withinWindow && line.mounted) {
+        this.unmountLineDetail(line);
+      }
+    }
+  }
+
   private watchUserScroll(): void {
-    this.scrollContainer.addEventListener("wheel", () => this.onUserScroll(), { passive: true });
-    this.scrollContainer.addEventListener("touchmove", () => this.onUserScroll(), { passive: true });
+    this.scrollContainer.addEventListener("wheel", () => this.onUserScroll(), {
+      passive: true,
+    });
+    this.scrollContainer.addEventListener(
+      "touchmove",
+      () => this.onUserScroll(),
+      { passive: true },
+    );
   }
 
   private onUserScroll(): void {
@@ -429,15 +619,34 @@ export default class LyricsRenderer {
       this.lastTimestamp >= 0 &&
       Math.abs(currentTimestamp - this.lastTimestamp) > 0.5;
 
+    // Recenter the mounted-detail window before animating so a newly-active line
+    // (including after a big seek) is always mounted before we try to animate it.
+    this.applyVirtualizationWindow(
+      this.computeReferenceIndex(currentTimestamp),
+    );
+
+    let hasActive = false;
+
     for (const line of this.lines) {
-      this.animateLine(line, currentTimestamp, deltaTime, frame.springConfig, frame.ctx);
+      this.animateLine(
+        line,
+        currentTimestamp,
+        deltaTime,
+        frame.springConfig,
+        frame.ctx,
+      );
+      if (line.state === "Active") hasActive = true;
     }
 
-    this.lyricsEnded = currentTimestamp >= ((this.lyrics as any).endTime ?? Infinity);
+    this.lyricsEnded =
+      currentTimestamp >= ((this.lyrics as any).endTime ?? Infinity);
+
+    if (this.needsScroll) {
+      this.needsScroll = false;
+      this.scrollToActive();
+    }
 
     this.updateBlur(frame.ctx);
-
-    const hasActive = this.lines.some((l) => l.state === "Active");
 
     if (this.scroller) {
       if (hasActive) {
@@ -453,7 +662,8 @@ export default class LyricsRenderer {
       const elapsed = currentTimestamp - this.scrollStartTime;
       const t = Math.min(elapsed / this.scrollDuration, 1);
       const ease = 1 - Math.pow(1 - t, 3);
-      this.scrollContainer.scrollTop = this.scrollStart + (this.targetScrollTop - this.scrollStart) * ease;
+      this.scrollContainer.scrollTop =
+        this.scrollStart + (this.targetScrollTop - this.scrollStart) * ease;
       if (t >= 1) {
         this.scrollContainer.scrollTop = this.targetScrollTop;
         this.targetScrollTop = -1;
@@ -462,7 +672,9 @@ export default class LyricsRenderer {
     }
 
     if (skipped) {
-      this.forceToActive();
+      this.autoScrollBlocked = false;
+      this.scrollContainer.classList.remove("UserScrolling");
+      this.scrollToActive(true);
     }
 
     this.lastTimestamp = currentTimestamp;
@@ -485,9 +697,106 @@ export default class LyricsRenderer {
           dot.span.style.opacity = "";
         }
       }
-      const lyricSpan = line.vocals.querySelector(".Lyric.Synced") as HTMLElement | null;
+      const lyricSpan = line.lyricSpanCache;
       if (lyricSpan) {
         lyricSpan.style.setProperty("--line-progress", "0%");
+      }
+    }
+  }
+
+  /** True if a line's cached position is within (or near) the visible scroll window.
+   * Used to avoid spending frame time easing springs on lines the user cannot see. */
+  private isLineNearViewport(line: LineInfo): boolean {
+    const scrollTop = this.scrollContainer.scrollTop;
+    const containerHeight =
+      this.cachedContainerHeight || this.scrollContainer.clientHeight;
+    const margin = containerHeight; // one extra viewport of slack above/below
+    const top = line.cachedOffsetTop;
+    const bottom = top + line.cachedHeight;
+    return (
+      bottom >= scrollTop - margin &&
+      top <= scrollTop + containerHeight + margin
+    );
+  }
+
+  /** Snap a Sung line straight to its final resting visual state and mark springs
+   * as if they'd already settled — used for off-screen lines so we don't spend
+   * dozens of frames easing springs the user can never see. Without this, every
+   * line that turns Sung while scrolled out of view keeps stepSungLine() running
+   * (and stays promoted to GPU) until it happens to settle on its own, and since
+   * lines can turn Sung faster than their springs converge, the number of
+   * off-screen lines still being animated keeps growing over the course of a song. */
+  private finalizeLineSungInstant(line: LineInfo, ctx: FrameCtx): void {
+    if (line.isSyllableType && line.syllables.length > 0) {
+      const scale = ctx.splines.Scale.at(1);
+      const yOffset = ctx.splines.YOffset.at(1);
+      const glow = ctx.splines.Glow.at(1);
+      const letterScale = ctx.splines.LetterScale.at(1);
+      const letterYOffset = ctx.splines.LetterYOffset.at(1);
+      for (const syl of line.syllables) {
+        syl.span.style.setProperty("--char-progress", "120%");
+        if (syl.springs) {
+          syl.springs.Scale.SetGoal(scale, true);
+          syl.springs.YOffset.SetGoal(yOffset, true);
+          syl.springs.Glow.SetGoal(glow, true);
+          applySpringStyles(
+            syl.span,
+            { scale, yOffset, glow },
+            ctx.glowIntensity,
+          );
+        }
+        for (const ltr of syl.letters) {
+          ltr.span.style.setProperty("--char-progress", "120%");
+          if (ltr.springs) {
+            ltr.springs.Scale.SetGoal(letterScale, true);
+            ltr.springs.YOffset.SetGoal(letterYOffset, true);
+            ltr.springs.Glow.SetGoal(glow, true);
+            setCachedInline(ltr.span, "scale", `${letterScale}`);
+            setCachedInline(
+              ltr.span,
+              "transform",
+              `translate3d(0, calc(var(--vl-default-font-size) * ${letterYOffset * 2}), 0)`,
+            );
+            setCachedStyle(
+              ltr.span,
+              "--text-shadow-blur-radius",
+              `${4 + 12 * glow}px`,
+            );
+            setCachedStyle(ltr.span, "--text-shadow-opacity", "0%");
+          }
+        }
+      }
+    } else if (!line.isSyllableType && line.syllables.length === 0) {
+      if (line.dots) {
+        const scale = DotScaleSpline.at(1);
+        const yOffset = DotYOffsetSpline.at(1);
+        const glow = DotGlowSpline.at(1);
+        const opacity = DotOpacitySpline.at(1);
+        for (const dot of line.dots) {
+          setDotSpringGoals(dot.springs, 1, "Sung", true);
+          setCachedInline(dot.span, "scale", `${scale}`);
+          setCachedInline(
+            dot.span,
+            "transform",
+            `translate3d(0, calc(var(--vl-default-font-size) * ${yOffset}), 0)`,
+          );
+          setCachedInline(dot.span, "opacity", `${opacity}`);
+          setCachedStyle(
+            dot.span,
+            "--text-shadow-blur-radius",
+            `${4 + 6 * glow}px`,
+          );
+          setCachedStyle(dot.span, "--text-shadow-opacity", `${glow * 90}%`);
+        }
+      }
+      const lyricSpan = line.lyricSpanCache;
+      if (lyricSpan) {
+        lyricSpan.style.setProperty("--line-progress", "100%");
+        if (line.glowSpring) {
+          line.glowSpring.SetGoal(0, true);
+          setCachedStyle(lyricSpan, "--text-shadow-blur-radius", "4px");
+          setCachedStyle(lyricSpan, "--text-shadow-opacity", "0%");
+        }
       }
     }
   }
@@ -515,7 +824,7 @@ export default class LyricsRenderer {
           setDotSpringGoals(dot.springs, 1, "Sung", false);
         }
       }
-      const lyricSpan = line.vocals.querySelector(".Lyric.Synced") as HTMLElement | null;
+      const lyricSpan = line.lyricSpanCache;
       if (lyricSpan) {
         lyricSpan.style.setProperty("--line-progress", "100%");
         if (line.glowSpring) {
@@ -530,13 +839,21 @@ export default class LyricsRenderer {
     if (line.isSyllableType && line.syllables.length > 0) {
       for (const syl of line.syllables) {
         if (syl.springs) {
-          if (!syl.springs.Scale.CanSleep() || !syl.springs.YOffset.CanSleep() || !syl.springs.Glow.CanSleep()) {
+          if (
+            !syl.springs.Scale.CanSleep() ||
+            !syl.springs.YOffset.CanSleep() ||
+            !syl.springs.Glow.CanSleep()
+          ) {
             return false;
           }
         }
         for (const ltr of syl.letters) {
           if (ltr.springs) {
-            if (!ltr.springs.Scale.CanSleep() || !ltr.springs.YOffset.CanSleep() || !ltr.springs.Glow.CanSleep()) {
+            if (
+              !ltr.springs.Scale.CanSleep() ||
+              !ltr.springs.YOffset.CanSleep() ||
+              !ltr.springs.Glow.CanSleep()
+            ) {
               return false;
             }
           }
@@ -544,8 +861,12 @@ export default class LyricsRenderer {
       }
     } else if (line.dots) {
       for (const dot of line.dots) {
-        if (!dot.springs.Scale.CanSleep() || !dot.springs.YOffset.CanSleep() ||
-            !dot.springs.Glow.CanSleep() || !dot.springs.Opacity.CanSleep()) {
+        if (
+          !dot.springs.Scale.CanSleep() ||
+          !dot.springs.YOffset.CanSleep() ||
+          !dot.springs.Glow.CanSleep() ||
+          !dot.springs.Opacity.CanSleep()
+        ) {
           return false;
         }
       }
@@ -555,7 +876,12 @@ export default class LyricsRenderer {
   }
 
   /** Step springs on a Sung line until they settle, then apply final DOM state */
-  private stepSungLine(line: LineInfo, deltaTime: number, springConfig: SpicySpringConfig, ctx: FrameCtx): void {
+  private stepSungLine(
+    line: LineInfo,
+    deltaTime: number,
+    springConfig: SpicySpringConfig,
+    ctx: FrameCtx,
+  ): void {
     if (line.isSyllableType && line.syllables.length > 0) {
       const sylScratch = { scale: 0, yOffset: 0, glow: 0 };
       const ltrScratch = { scale: 0, yOffset: 0, glow: 0 };
@@ -569,9 +895,21 @@ export default class LyricsRenderer {
             const values = stepSprings(ltr.springs, deltaTime, ltrScratch);
             const gi = ctx.glowIntensity;
             setCachedInline(ltr.span, "scale", `${values.scale}`);
-            setCachedInline(ltr.span, "transform", `translate3d(0, calc(var(--vl-default-font-size) * ${values.yOffset * 2}), 0)`);
-            setCachedStyle(ltr.span, "--text-shadow-blur-radius", `${4 + 12 * values.glow * gi}px`);
-            setCachedStyle(ltr.span, "--text-shadow-opacity", `${Math.min(values.glow * 185 * gi, 100)}%`);
+            setCachedInline(
+              ltr.span,
+              "transform",
+              `translate3d(0, calc(var(--vl-default-font-size) * ${values.yOffset * 2}), 0)`,
+            );
+            setCachedStyle(
+              ltr.span,
+              "--text-shadow-blur-radius",
+              `${4 + 12 * values.glow * gi}px`,
+            );
+            setCachedStyle(
+              ltr.span,
+              "--text-shadow-opacity",
+              `${Math.min(values.glow * 185 * gi, 100)}%`,
+            );
           }
         }
       }
@@ -581,32 +919,54 @@ export default class LyricsRenderer {
         for (const dot of line.dots) {
           const v = stepDotSprings(dot.springs, deltaTime, dotScratch);
           setCachedInline(dot.span, "scale", `${v.scale}`);
-          setCachedInline(dot.span, "transform", `translate3d(0, calc(var(--vl-default-font-size) * ${v.yOffset}), 0)`);
+          setCachedInline(
+            dot.span,
+            "transform",
+            `translate3d(0, calc(var(--vl-default-font-size) * ${v.yOffset}), 0)`,
+          );
           setCachedInline(dot.span, "opacity", `${v.opacity}`);
-          setCachedStyle(dot.span, "--text-shadow-blur-radius", `${4 + 6 * v.glow}px`);
+          setCachedStyle(
+            dot.span,
+            "--text-shadow-blur-radius",
+            `${4 + 6 * v.glow}px`,
+          );
           setCachedStyle(dot.span, "--text-shadow-opacity", `${v.glow * 90}%`);
         }
       }
-      const lyricSpan = line.vocals.querySelector(".Lyric.Synced") as HTMLElement | null;
+      const lyricSpan = line.lyricSpanCache;
       if (lyricSpan && line.glowSpring && springConfig.enabled) {
         const gi = ctx.glowIntensity;
         const currentGlow = line.glowSpring.Step(deltaTime);
-        setCachedStyle(lyricSpan, "--text-shadow-blur-radius", `${4 + 8 * currentGlow * gi}px`);
-        setCachedStyle(lyricSpan, "--text-shadow-opacity", `${Math.min(currentGlow * 50 * gi, 100)}%`);
+        setCachedStyle(
+          lyricSpan,
+          "--text-shadow-blur-radius",
+          `${4 + 8 * currentGlow * gi}px`,
+        );
+        setCachedStyle(
+          lyricSpan,
+          "--text-shadow-opacity",
+          `${Math.min(currentGlow * 50 * gi, 100)}%`,
+        );
       }
     }
   }
 
-  /** Promote line elements to GPU layer for animation */
+  /** Promote line elements to GPU layer for animation.
+   * Only elements with real spring-driven transforms are promoted —
+   * non-emphasized letters have no springs and never get an inline
+   * transform, so giving them `will-change` just wastes a compositor
+   * layer for nothing. */
   private promoteLine(line: LineInfo): void {
     if (line.isSyllableType) {
       for (const syl of line.syllables) {
         promoteToGPU(syl.span);
-        for (const ltr of syl.letters) promoteToGPU(ltr.span);
+        for (const ltr of syl.letters) {
+          if (ltr.springs) promoteToGPU(ltr.span);
+        }
       }
     } else if (line.dots) {
       for (const dot of line.dots) promoteToGPU(dot.span);
-      const lyricSpan = line.vocals.querySelector(".Lyric.Synced") as HTMLElement | null;
+      const lyricSpan = line.lyricSpanCache;
       if (lyricSpan) promoteToGPU(lyricSpan);
     }
   }
@@ -616,11 +976,13 @@ export default class LyricsRenderer {
     if (line.isSyllableType) {
       for (const syl of line.syllables) {
         demoteFromGPU(syl.span);
-        for (const ltr of syl.letters) demoteFromGPU(ltr.span);
+        for (const ltr of syl.letters) {
+          if (ltr.springs) demoteFromGPU(ltr.span);
+        }
       }
     } else if (line.dots) {
       for (const dot of line.dots) demoteFromGPU(dot.span);
-      const lyricSpan = line.vocals.querySelector(".Lyric.Synced") as HTMLElement | null;
+      const lyricSpan = line.lyricSpanCache;
       if (lyricSpan) demoteFromGPU(lyricSpan);
     }
   }
@@ -657,21 +1019,41 @@ export default class LyricsRenderer {
       }
 
       if (stateNow === "Sung") {
+        if (!this.isLineNearViewport(line)) {
+          // Off-screen: skip the multi-frame ease entirely so it can't pile up
+          // alongside other off-screen lines still settling.
+          this.finalizeLineSungInstant(line, ctx);
+          line.settled = true;
+          this.demoteLine(line);
+          return;
+        }
         this.setSungGoals(line, ctx);
       }
 
       if (stateNow === "Active") {
         this.promoteLine(line);
-        this.scrollToActive();
+        this.needsScroll = true;
       }
     }
 
     // Idle lines: no per-frame work
     if (stateNow === "Idle") return;
 
+    // Virtualized out (detached, cheap placeholder shown instead) — nothing
+    // visible to animate until it re-enters the mounted window.
+    if (line.isSyllableType && !line.mounted) return;
+
     // Sung lines: step springs until settled
     if (stateNow === "Sung") {
       if (line.settled) return;
+      if (!this.isLineNearViewport(line)) {
+        // Scrolled out of view while still easing — finish instantly instead of
+        // continuing to spend frame time on springs nobody can see.
+        this.finalizeLineSungInstant(line, ctx);
+        line.settled = true;
+        this.demoteLine(line);
+        return;
+      }
       if (this.areSpringsSettled(line)) {
         line.settled = true;
         this.demoteLine(line);
@@ -682,7 +1064,8 @@ export default class LyricsRenderer {
     }
 
     // Active lines: full animation
-    const timeScale = line.duration > 0 ? clamp(relativeTime / line.duration, 0, 1) : 1;
+    const timeScale =
+      line.duration > 0 ? clamp(relativeTime / line.duration, 0, 1) : 1;
 
     if (line.isSyllableType && line.syllables.length > 0 && line.duration > 0) {
       const activeScratch = { scale: 0, yOffset: 0, glow: 0 };
@@ -692,7 +1075,7 @@ export default class LyricsRenderer {
         const sylProgress = clamp(
           (timeScale - syl.startScale) / sylDuration,
           0,
-          1
+          1,
         );
 
         const pct = -20 + sylProgress * 140;
@@ -706,7 +1089,8 @@ export default class LyricsRenderer {
           const otherDuration = other.endScale - other.startScale || 0.01;
           const otherProg = clamp(
             (timeScale - other.startScale) / otherDuration,
-            0, 1
+            0,
+            1,
           );
           if (otherProg > 0 && otherProg < 1) {
             activeLetterIndex = i;
@@ -720,23 +1104,30 @@ export default class LyricsRenderer {
           const ltrDuration = ltr.endScale - ltr.startScale || 0.01;
           const ltrProgress = clamp(
             (timeScale - ltr.startScale) / ltrDuration,
-            0, 1
+            0,
+            1,
           );
 
           const ltrPct = -20 + ltrProgress * 140;
           setCachedStyle(ltr.span, "--char-progress", `${ltrPct}%`);
 
           if (springConfig.enabled && ltr.springs) {
-            const sylDurationMs = (syl.endScale - syl.startScale) * line.duration * 1000;
-            const stretchMultiplier = sylDurationMs > EMPHASIS_LONGER_THAN_MS ? 1.103 : 1.09;
+            const sylDurationMs =
+              (syl.endScale - syl.startScale) * line.duration * 1000;
+            const stretchMultiplier =
+              sylDurationMs > EMPHASIS_LONGER_THAN_MS ? 1.103 : 1.09;
 
             let targetScale = ctx.splines.Scale.at(0);
             let targetYOffset = ctx.splines.YOffset.at(0);
             let targetGlow = ctx.splines.Glow.at(0);
 
             if (activeLetterIndex >= 0) {
-              const baseScale = ctx.splines.Scale.at(activeLetterPercentage) * stretchMultiplier;
-              const baseYOffset = ctx.splines.YOffset.at(activeLetterPercentage);
+              const baseScale =
+                ctx.splines.Scale.at(activeLetterPercentage) *
+                stretchMultiplier;
+              const baseYOffset = ctx.splines.YOffset.at(
+                activeLetterPercentage,
+              );
               const baseGlow = ctx.splines.Glow.at(activeLetterPercentage);
 
               const restingScale = ctx.splines.Scale.at(0);
@@ -745,15 +1136,24 @@ export default class LyricsRenderer {
 
               const distance = Math.abs(li - activeLetterIndex);
               const isCurrent = get("springMode") === "current";
-              const falloff = Math.max(0, 1 / (1 + (isCurrent ? Math.pow(distance, 2.8) : distance * 0.9)));
+              const falloff = Math.max(
+                0,
+                1 /
+                  (1 + (isCurrent ? Math.pow(distance, 2.8) : distance * 0.9)),
+              );
               const glowFalloff = Math.max(0, 1 / (1 + distance * 0.9));
 
               targetScale = restingScale + (baseScale - restingScale) * falloff;
-              targetYOffset = restingYOffset + (baseYOffset - restingYOffset) * falloff;
+              targetYOffset =
+                restingYOffset + (baseYOffset - restingYOffset) * falloff;
               targetGlow = restingGlow + (baseGlow - restingGlow) * glowFalloff;
             } else {
-              const ltrState = ltrProgress > 0 && ltrProgress < 1 ? "Active"
-                : ltrProgress >= 1 ? "Sung" : "NotSung";
+              const ltrState =
+                ltrProgress > 0 && ltrProgress < 1
+                  ? "Active"
+                  : ltrProgress >= 1
+                    ? "Sung"
+                    : "NotSung";
 
               if (ltrState === "NotSung") {
                 targetScale = ctx.splines.Scale.at(0);
@@ -774,21 +1174,41 @@ export default class LyricsRenderer {
             ltr.springs.YOffset.SetGoal(targetYOffset, replacePos);
             ltr.springs.Glow.SetGoal(targetGlow, replacePos);
 
-            const values = stepSprings(ltr.springs, deltaTime, activeScratch);
+            const ltrDurationS = ltrDuration * line.duration;
+            const ltrDt = deltaTime * springTimeScale(ltrDurationS);
+            const values = stepSprings(ltr.springs, ltrDt, activeScratch);
             const gi = ctx.glowIntensity;
             setCachedInline(ltr.span, "scale", `${values.scale}`);
-            setCachedInline(ltr.span, "transform", `translate3d(0, calc(var(--vl-default-font-size) * ${values.yOffset * 2}), 0)`);
-            setCachedStyle(ltr.span, "--text-shadow-blur-radius", `${4 + 12 * values.glow * gi}px`);
-            setCachedStyle(ltr.span, "--text-shadow-opacity", `${Math.min(values.glow * 185 * gi, 100)}%`);
+            setCachedInline(
+              ltr.span,
+              "transform",
+              `translate3d(0, calc(var(--vl-default-font-size) * ${values.yOffset * 2}), 0)`,
+            );
+            setCachedStyle(
+              ltr.span,
+              "--text-shadow-blur-radius",
+              `${4 + 12 * values.glow * gi}px`,
+            );
+            setCachedStyle(
+              ltr.span,
+              "--text-shadow-opacity",
+              `${Math.min(values.glow * 185 * gi, 100)}%`,
+            );
           }
         }
 
         if (springConfig.enabled && syl.springs) {
-          const sylState = sylProgress > 0 && sylProgress < 1 ? "Active"
-            : sylProgress >= 1 ? "Sung" : "NotSung";
+          const sylState =
+            sylProgress > 0 && sylProgress < 1
+              ? "Active"
+              : sylProgress >= 1
+                ? "Sung"
+                : "NotSung";
 
           setSpringGoals(syl.springs, sylProgress, sylState, replacePos);
-          const values = stepSprings(syl.springs, deltaTime, activeScratch);
+          const sylDurationS = sylDuration * line.duration;
+          const sylDt = deltaTime * springTimeScale(sylDurationS);
+          const values = stepSprings(syl.springs, sylDt, activeScratch);
           applySpringStyles(syl.span, values, ctx.glowIntensity);
         }
       }
@@ -797,21 +1217,34 @@ export default class LyricsRenderer {
         const activeDotScratch = { scale: 0, yOffset: 0, glow: 0, opacity: 0 };
         for (const dot of line.dots) {
           const dotRelTime = songTimestamp - dot.startTime;
-          const dotProgress = dot.duration > 0 ? clamp(dotRelTime / dot.duration, 0, 1) : 0;
+          const dotProgress =
+            dot.duration > 0 ? clamp(dotRelTime / dot.duration, 0, 1) : 0;
           const dotPastStart = dotRelTime >= 0;
           const dotBeforeEnd = dotRelTime <= dot.duration;
-          const dotState: "NotSung" | "Active" | "Sung" = dotPastStart && dotBeforeEnd
-            ? "Active" : dotPastStart ? "Sung" : "NotSung";
+          const dotState: "NotSung" | "Active" | "Sung" =
+            dotPastStart && dotBeforeEnd
+              ? "Active"
+              : dotPastStart
+                ? "Sung"
+                : "NotSung";
           setDotSpringGoals(dot.springs, dotProgress, dotState, replacePos);
           const v = stepDotSprings(dot.springs, deltaTime, activeDotScratch);
           setCachedInline(dot.span, "scale", `${v.scale}`);
-          setCachedInline(dot.span, "transform", `translate3d(0, calc(var(--vl-default-font-size) * ${v.yOffset}), 0)`);
+          setCachedInline(
+            dot.span,
+            "transform",
+            `translate3d(0, calc(var(--vl-default-font-size) * ${v.yOffset}), 0)`,
+          );
           setCachedInline(dot.span, "opacity", `${v.opacity}`);
-          setCachedStyle(dot.span, "--text-shadow-blur-radius", `${4 + 6 * v.glow}px`);
+          setCachedStyle(
+            dot.span,
+            "--text-shadow-blur-radius",
+            `${4 + 6 * v.glow}px`,
+          );
           setCachedStyle(dot.span, "--text-shadow-opacity", `${v.glow * 90}%`);
         }
       }
-      const lyricSpan = line.vocals.querySelector(".Lyric.Synced") as HTMLElement | null;
+      const lyricSpan = line.lyricSpanCache;
       if (lyricSpan && line.duration > 0) {
         const lineProgress = clamp(relativeTime / line.duration, 0, 1);
         const gradientPos = lineProgress * 100;
@@ -822,8 +1255,16 @@ export default class LyricsRenderer {
           const targetGlow = ctx.splines.LineGlow.at(lineProgress);
           line.glowSpring.SetGoal(targetGlow, replacePos);
           const currentGlow = line.glowSpring.Step(deltaTime);
-          setCachedStyle(lyricSpan, "--text-shadow-blur-radius", `${4 + 8 * currentGlow * gi}px`);
-          setCachedStyle(lyricSpan, "--text-shadow-opacity", `${Math.min(currentGlow * 50 * gi, 100)}%`);
+          setCachedStyle(
+            lyricSpan,
+            "--text-shadow-blur-radius",
+            `${4 + 8 * currentGlow * gi}px`,
+          );
+          setCachedStyle(
+            lyricSpan,
+            "--text-shadow-opacity",
+            `${Math.min(currentGlow * 50 * gi, 100)}%`,
+          );
         }
       }
     }
@@ -845,6 +1286,19 @@ export default class LyricsRenderer {
   private updateBlur(ctx?: FrameCtx): void {
     if (this.lyrics.type === "Static") return;
 
+    if (!ctx?.blurEnabled) {
+      if (this.lastBlurCleared) return;
+      this.lastBlurCleared = true;
+      for (let i = 0; i < this.lines.length; i++) {
+        const line = this.lines[i];
+        clearCachedStyle(line.container, "--vl-blur");
+        line.container.style.removeProperty("--vl-blur");
+        line.container.style.opacity = "";
+      }
+      return;
+    }
+    this.lastBlurCleared = false;
+
     let activeStart = -1;
     let activeEnd = -1;
 
@@ -865,17 +1319,6 @@ export default class LyricsRenderer {
     }
 
     const reset = this.autoScrollBlocked;
-
-    if (!ctx?.blurEnabled) {
-      for (let i = 0; i < this.lines.length; i++) {
-        const line = this.lines[i];
-        clearCachedStyle(line.container, "--vl-blur");
-        line.container.style.removeProperty("--vl-blur");
-        line.container.style.opacity = "";
-      }
-      return;
-    }
-
     const strengthMul = ctx.blurStrengthMul;
 
     for (let i = 0; i < this.lines.length; i++) {
@@ -904,7 +1347,11 @@ export default class LyricsRenderer {
       else if (distance === 3) opacity = 0.6;
       else if (distance >= 4) opacity = 0.45;
 
-      setCachedStyle(line.container, "--vl-blur", blurPx > 0 ? `${blurPx}px` : "0");
+      setCachedStyle(
+        line.container,
+        "--vl-blur",
+        blurPx > 0 ? `${blurPx}px` : "0",
+      );
       setCachedInline(line.container, "opacity", `${opacity}`);
     }
   }
@@ -927,32 +1374,44 @@ export default class LyricsRenderer {
     const activeLine = this.lines[activeIdx];
 
     if (this.scroller) {
-      this.scroller.setActiveLine(activeLine.container);
+      const lineCenter =
+        activeLine.cachedOffsetTop + activeLine.cachedHeight / 2;
+      this.scroller.setActiveLine(lineCenter, this.cachedContainerHeight);
       if (instant) this.scroller.snapToTarget();
       return;
     }
 
-    const containerRect = this.scrollContainer.getBoundingClientRect();
-    const lineRect = activeLine.container.getBoundingClientRect();
-    const lineRelativeTop = lineRect.top - containerRect.top;
+    const containerHeight =
+      this.cachedContainerHeight || this.scrollContainer.clientHeight;
+    const scrollTop = this.scrollContainer.scrollTop;
+
+    const lineRelativeTop = activeLine.cachedOffsetTop - scrollTop;
+    const lineHeight = activeLine.cachedHeight;
 
     if (this.viewMode === "card") {
-      const zones: Record<string, { min: number; max: number; target: number }> = {
-        static:  { min: 0.15, max: 0.7, target: 0.15 },
-        gentle:  { min: 0.25, max: 0.55, target: 0.25 },
-        active:  { min: 0.3, max: 0.45, target: 0.25 },
+      const zones: Record<
+        string,
+        { min: number; max: number; target: number }
+      > = {
+        static: { min: 0.15, max: 0.7, target: 0.15 },
+        gentle: { min: 0.25, max: 0.55, target: 0.25 },
+        active: { min: 0.3, max: 0.45, target: 0.25 },
       };
       const z = zones[this.cardScrollMode] ?? zones.static;
-      if (lineRelativeTop < containerRect.height * z.min || lineRelativeTop > containerRect.height * z.max) {
-        this.targetScrollTop = this.scrollContainer.scrollTop + lineRelativeTop - containerRect.height * z.target;
+      if (
+        lineRelativeTop < containerHeight * z.min ||
+        lineRelativeTop > containerHeight * z.max
+      ) {
+        this.targetScrollTop =
+          scrollTop + lineRelativeTop - containerHeight * z.target;
         this.scrollStartTime = 0;
       } else {
         return;
       }
     } else {
-      // Main view: center in 20-60% region (~40%)
-      const targetY = containerRect.height * 0.4;
-      this.targetScrollTop = this.scrollContainer.scrollTop + lineRelativeTop - targetY + lineRect.height / 2;
+      const targetY = containerHeight * 0.4;
+      this.targetScrollTop =
+        scrollTop + lineRelativeTop - targetY + lineHeight / 2;
       this.scrollStartTime = 0;
     }
 
@@ -960,12 +1419,6 @@ export default class LyricsRenderer {
       this.scrollContainer.scrollTop = this.targetScrollTop;
       this.targetScrollTop = -1;
     }
-  }
-
-  private forceToActive(): void {
-    this.autoScrollBlocked = false;
-    this.scrollContainer.classList.remove("UserScrolling");
-    this.scrollToActive(true);
   }
 
   public destroy(): void {
@@ -977,6 +1430,16 @@ export default class LyricsRenderer {
 
     this.lines = [];
     this.scrollContainer.remove();
+  }
+
+  private isActive(): boolean {
+    if (this.destroyed) return false;
+    if (this.lyricsEnded) return false;
+    for (const line of this.lines) {
+      if (line.state === "Active") return true;
+      if (line.state === "Sung" && !line.settled) return true;
+    }
+    return this.targetScrollTop >= 0;
   }
 
   public appendCredits(creditsEl: HTMLElement): void {

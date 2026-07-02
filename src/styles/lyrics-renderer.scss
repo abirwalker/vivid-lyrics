@@ -139,7 +139,8 @@ html.vl-centered-text .VividLyrics-FullscreenContent .VL-FS-Line,
         text-shadow:
             0 0 var(--vl-blur, 0) var(--vl-text-dim),
             0 0 6px rgba(255, 255, 255, 0.15),
-            0 0 var(--text-shadow-blur-radius, 0px) rgb(255 255 255 / var(--text-shadow-opacity, 0%));
+            0 0 var(--text-shadow-blur-radius, 0px)
+                rgb(255 255 255 / var(--text-shadow-opacity, 0%));
     }
 
     &.Static {
@@ -150,6 +151,12 @@ html.vl-centered-text .VividLyrics-FullscreenContent .VL-FS-Line,
         display: block;
         white-space: pre-wrap;
     }
+}
+
+.VL-LinePlaceholder {
+    display: inline;
+    color: var(--vl-text-dim, inherit);
+    overflow-wrap: anywhere;
 }
 
 .Word {
@@ -176,7 +183,8 @@ html.vl-centered-text .VividLyrics-FullscreenContent .VL-FS-Line,
     text-shadow:
         0 0 var(--vl-blur, 0) var(--vl-text-dim),
         0 0 6px rgba(255, 255, 255, 0.15),
-        0 0 var(--text-shadow-blur-radius, 0px) rgb(255 255 255 / var(--text-shadow-opacity, 0%));
+        0 0 var(--text-shadow-blur-radius, 0px)
+            rgb(255 255 255 / var(--text-shadow-opacity, 0%));
 }
 
 .Letter {
@@ -192,7 +200,8 @@ html.vl-centered-text .VividLyrics-FullscreenContent .VL-FS-Line,
     text-shadow:
         0 0 var(--vl-blur, 0) var(--vl-text-dim),
         0 0 6px rgba(255, 255, 255, 0.15),
-        0 0 var(--text-shadow-blur-radius, 0px) rgb(255 255 255 / var(--text-shadow-opacity, 0%));
+        0 0 var(--text-shadow-blur-radius, 0px)
+            rgb(255 255 255 / var(--text-shadow-opacity, 0%));
 }
 
 .VocalsGroup.InterludeLine {
@@ -233,7 +242,8 @@ html.vl-centered-text .VividLyrics-FullscreenContent .VL-FS-Line,
             border-radius: 100rem;
             cursor: pointer;
             background-color: rgba(255, 255, 255, 0.85);
-            box-shadow: 0 0 var(--text-shadow-blur-radius, 0px) rgb(255 255 255 / var(--text-shadow-opacity, 0%));
+            box-shadow: 0 0 var(--text-shadow-blur-radius, 0px)
+                rgb(255 255 255 / var(--text-shadow-opacity, 0%));
         }
     }
 }
