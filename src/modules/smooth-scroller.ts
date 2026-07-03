@@ -1,7 +1,7 @@
-import { setCachedStyle } from "../utils/style-cache";
+import type SimpleBar from "simplebar";
 
 interface ScrollerOptions {
-  container: HTMLElement;
+  simpleBar: SimpleBar;
   track: HTMLElement;
   focusRatio?: number;
   mode?: "spring" | "exponential";
@@ -11,10 +11,10 @@ interface ScrollerOptions {
   manualScrollPauseMs?: number;
 }
 
-const MAX_DT = 1 / 30;
+const MAX_DT = 1 / 8;
 
 export class SmoothLyricsScroller {
-  private container: HTMLElement;
+  private simpleBar: SimpleBar;
   private track: HTMLElement;
   private focusRatio: number;
   private mode: "spring" | "exponential";
@@ -29,12 +29,13 @@ export class SmoothLyricsScroller {
   private initialized = false;
 
   private userScrolling = false;
+  private programmaticScroll = false;
   private resumeTimer: number | null = null;
   private onUserInput: (() => void) | null = null;
   private prevLineCenter = -1;
 
   constructor(opts: ScrollerOptions) {
-    this.container = opts.container;
+    this.simpleBar = opts.simpleBar;
     this.track = opts.track;
     this.focusRatio = opts.focusRatio ?? 0.42;
     this.mode = opts.mode ?? "spring";
@@ -47,31 +48,27 @@ export class SmoothLyricsScroller {
   }
 
   private clampTarget(raw: number): number {
-    const minY = Math.min(
-      0,
-      this.container.clientHeight - this.track.scrollHeight,
-    );
-    return Math.max(minY, Math.min(0, raw));
+    const scrollEl = this.simpleBar.getScrollElement();
+    const maxScroll = Math.max(0, scrollEl.scrollHeight - scrollEl.clientHeight);
+    return Math.max(0, Math.min(maxScroll, raw));
   }
 
-  /** Call when the active line changes. Uses cached positions to avoid layout reads. */
   setActiveLine(cachedLineCenter: number, cachedContainerHeight: number) {
     if (this.userScrolling) return;
     if (cachedLineCenter === this.prevLineCenter) return;
     this.prevLineCenter = cachedLineCenter;
 
-    const focusOffset = cachedContainerHeight * this.focusRatio;
-    this.target = this.clampTarget(-(cachedLineCenter - focusOffset));
-
+    const target = this.clampTarget(cachedLineCenter - cachedContainerHeight * this.focusRatio);
+    if (Math.abs(this.current - target) < 0.5) return;
+    this.target = target;
     if (!this.initialized) {
       this.current = this.target;
       this.velocity = 0;
-      setCachedStyle(this.track, "transform", `translate3d(0,${this.current}px,0)`);
+      this.applyScroll(this.current);
       this.initialized = true;
     }
   }
 
-  /** Drive from master RAF loop. dt in seconds. */
   update(dt: number) {
     if (this.current === this.target) return;
     dt = Math.min(dt, MAX_DT);
@@ -90,39 +87,50 @@ export class SmoothLyricsScroller {
       this.velocity = 0;
     }
 
-    setCachedStyle(this.track, "transform", `translate3d(0,${this.current}px,0)`);
+    this.applyScroll(this.current);
   }
 
-  /** Snap instantly to active line (for seek/skip). */
   snapToTarget() {
     this.current = this.target;
     this.velocity = 0;
-    setCachedStyle(this.track, "transform", `translate3d(0,${this.current}px,0)`);
+    this.applyScroll(this.current);
   }
 
   get isUserScrolling() {
     return this.userScrolling;
   }
 
+  getScrollElement(): HTMLElement {
+    return this.simpleBar.getScrollElement();
+  }
+
+  getContentElement(): HTMLElement {
+    return this.simpleBar.getContentElement();
+  }
+
+  private applyScroll(pos: number) {
+    this.programmaticScroll = true;
+    this.simpleBar.getScrollElement().scrollTop = Math.round(pos);
+    this.programmaticScroll = false;
+  }
+
   private bindManualScrollDetection() {
     this.onUserInput = () => {
+      if (this.programmaticScroll) return;
       this.userScrolling = true;
       if (this.resumeTimer) window.clearTimeout(this.resumeTimer);
       this.resumeTimer = window.setTimeout(() => {
         this.userScrolling = false;
       }, this.manualPauseMs);
     };
-    this.container.addEventListener("wheel", this.onUserInput, { passive: true });
-    this.container.addEventListener("touchstart", this.onUserInput, { passive: true });
-    this.container.addEventListener("pointerdown", this.onUserInput, { passive: true });
+    const scrollEl = this.simpleBar.getScrollElement();
+    scrollEl.addEventListener("scroll", this.onUserInput, { passive: true });
   }
 
   dispose() {
     if (this.resumeTimer) window.clearTimeout(this.resumeTimer);
     if (this.onUserInput) {
-      this.container.removeEventListener("wheel", this.onUserInput);
-      this.container.removeEventListener("touchstart", this.onUserInput);
-      this.container.removeEventListener("pointerdown", this.onUserInput);
+      this.simpleBar.getScrollElement().removeEventListener("scroll", this.onUserInput);
     }
   }
 }

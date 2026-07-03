@@ -5,3 +5,5 @@ builds/
 *.log
 .DS_Store
 Thumbs.db
+
+vivid.zip
