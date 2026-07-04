@@ -53,12 +53,17 @@ class RenderLoopCoordinator {
     if (this.listeners.size === 0) this.stop();
   }
 
-  private ensureRunning(): void {
+  private ensureRunningInternal(): void {
     if (this.running) return;
     this.running = true;
     this.lastFrameTime = performance.now();
     this.timeDebt = 0;
     this.rafId = requestAnimationFrame(this.tick);
+  }
+
+  /** Force the RAF loop to restart if it stopped */
+  ensureRunning(): void {
+    this.ensureRunningInternal();
   }
 
   private stop(): void {

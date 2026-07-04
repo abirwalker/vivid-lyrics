@@ -16,16 +16,13 @@
     line-height: 2;
     font-size: 16px;
     position: relative;
-    max-width: 1100px;
     width: 100%;
-    margin: 0 auto;
-    padding: 0 48px;
     container-type: inline-size;
 }
 
 .VividLyrics-Credits {
     margin-top: auto;
-    padding-top: 24px;
+    padding: 32px 0px 0 0;
     font-size: 1.125rem;
     opacity: 0.4;
 }
@@ -63,7 +60,10 @@
     border-radius: 9999px;
     color: rgba(255, 255, 255, 0.7);
     cursor: pointer;
-    transition: background 0.15s, color 0.15s, transform 0.15s;
+    transition:
+        background 0.15s,
+        color 0.15s,
+        transform 0.15s;
 
     svg {
         width: 16px;

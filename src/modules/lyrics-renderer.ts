@@ -198,7 +198,7 @@ export default class LyricsRenderer {
     parentContainer.appendChild(this.scrollContainer);
 
     this.simpleBar = new SimpleBar(this.scrollContainer, { autoHide: false });
-    this.lyricsContainer.style.paddingBottom = "5em";
+    this.lyricsContainer.style.paddingBottom = "3em";
     this.cacheLayoutPositions();
 
     if (lyrics.type !== "Static") {
@@ -216,7 +216,7 @@ export default class LyricsRenderer {
       this.scroller = new SmoothLyricsScroller({
         simpleBar: this.simpleBar,
         track: this.lyricsContainer,
-        focusRatio: viewMode === "card" ? 0.35 : 0.42,
+        focusRatio: viewMode === "card" ? 0.35 : 0.35,
         mode: "spring",
         stiffness: 180,
         damping: 20,
@@ -526,6 +526,7 @@ export default class LyricsRenderer {
       const startTimeCopy = startTime;
       group.addEventListener("click", () => {
         Spicetify.Player.seek(startTimeCopy * 1000);
+        renderLoop.ensureRunning();
       });
 
       this.lyricsContainer.appendChild(group);
@@ -650,6 +651,13 @@ export default class LyricsRenderer {
     if (this.destroyed) return;
 
     const currentTimestamp = frame.currentTimestamp;
+
+    // If the loop was stopped because the song ended and now playback
+    // has moved backward, re-activate.
+    if (this.lyricsEnded && currentTimestamp < ((this.lyrics as any).endTime ?? Infinity)) {
+      this.lyricsEnded = false;
+    }
+
     const deltaTime = frame.deltaTime;
     const skipped =
       this.lastTimestamp >= 0 &&
@@ -702,9 +710,11 @@ export default class LyricsRenderer {
 		}
 
 		if (skipped) {
+      this.lyricsEnded = false;
       this.autoScrollBlocked = false;
       this.scrollContainer.classList.remove("UserScrolling");
       this.scrollToActive(true);
+      renderLoop.ensureRunning();
     }
 
     this.lastTimestamp = currentTimestamp;
@@ -1502,7 +1512,6 @@ export default class LyricsRenderer {
 
   private isActive(): boolean {
     if (this.destroyed) return false;
-    if (this.lyricsEnded) return false;
     return true;
   }
 

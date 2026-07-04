@@ -35,7 +35,7 @@
 }
 
 #VividLyrics-MainPage .LyricsScrollContainer {
-    padding: 40px 0 10em;
+    padding: 20cqw 0px 3em 0px;
 }
 
 .VL-FS-Line {
@@ -65,6 +65,10 @@ html.vl-centered-text .VividLyrics-FullscreenContent .VL-FS-Line,
     font-size: calc(var(--vl-default-font-size) * var(--vl-font-size, 1));
     line-height: 1.1818181818;
     padding: 0 4px;
+}
+
+#VividLyrics-MainPage .Lyrics {
+    padding: 0 clamp(1rem, 8vw, 16rem);
 }
 
 .VocalsGroup {
