@@ -47,20 +47,25 @@ export class SmoothLyricsScroller {
     this.bindManualScrollDetection();
   }
 
-  private clampTarget(raw: number): number {
-    const scrollEl = this.simpleBar.getScrollElement();
-    const maxScroll = Math.max(0, scrollEl.scrollHeight - scrollEl.clientHeight);
+  private clampTarget(raw: number, maxScroll: number): number {
     return Math.max(0, Math.min(maxScroll, raw));
   }
 
-  setActiveLine(cachedLineCenter: number, cachedContainerHeight: number) {
-    if (this.userScrolling) return;
+  setActiveLine(
+    cachedLineCenter: number,
+    cachedContainerHeight: number,
+    cachedMaxScroll: number,
+  ) {
     if (cachedLineCenter === this.prevLineCenter) return;
     this.prevLineCenter = cachedLineCenter;
 
-    const target = this.clampTarget(cachedLineCenter - cachedContainerHeight * this.focusRatio);
+    const target = this.clampTarget(
+      cachedLineCenter - cachedContainerHeight * this.focusRatio,
+      cachedMaxScroll,
+    );
     if (Math.abs(this.current - target) < 0.5) return;
     this.target = target;
+    if (this.userScrolling) return;
     if (!this.initialized) {
       this.current = this.target;
       this.velocity = 0;

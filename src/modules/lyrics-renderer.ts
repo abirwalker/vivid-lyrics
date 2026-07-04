@@ -158,11 +158,18 @@ export default class LyricsRenderer {
   private scrollPending = false;
   private lastBlurCleared = false;
   private cachedContainerHeight = 0;
+  private cachedMaxScroll = 0;
+  // Snapshotted once per frame (before any DOM mutation happens that frame)
+  // so isLineNearViewport can check dozens of lines without re-reading
+  // scrollTop live each time — a live read after this frame's virtualization
+  // mount/unmount would force a synchronous layout flush.
+  private frameScrollTop = 0;
   /** Index of the line the virtualization window is currently centered on. */
   private referenceLineIndex = -1;
 
-  private autoScrollBlocked = false;
-  private userScrollTimer: ReturnType<typeof setTimeout> | null = null;
+	private autoScrollBlocked = false;
+	private programmaticScroll = false;
+	private userScrollTimer: ReturnType<typeof setTimeout> | null = null;
 
   private simpleBar: SimpleBar | null = null;
   private scroller: SmoothLyricsScroller | null = null;
@@ -191,6 +198,7 @@ export default class LyricsRenderer {
     parentContainer.appendChild(this.scrollContainer);
 
     this.simpleBar = new SimpleBar(this.scrollContainer, { autoHide: false });
+    this.lyricsContainer.style.paddingBottom = "5em";
     this.cacheLayoutPositions();
 
     if (lyrics.type !== "Static") {
@@ -215,7 +223,6 @@ export default class LyricsRenderer {
       });
     }
 
-    this.lyricsContainer.style.paddingBottom = "5em";
     this.watchUserScroll();
 
     if (lyrics.type !== "Static") {
@@ -550,6 +557,10 @@ export default class LyricsRenderer {
   private cacheLayoutPositions(): void {
     const scrollEl = this.simpleBar!.getScrollElement();
     this.cachedContainerHeight = scrollEl.clientHeight;
+    this.cachedMaxScroll = Math.max(
+      0,
+      scrollEl.scrollHeight - scrollEl.clientHeight,
+    );
     for (const line of this.lines) {
       line.cachedOffsetTop = line.container.offsetTop;
       line.cachedHeight = line.container.offsetHeight;
@@ -622,9 +633,10 @@ export default class LyricsRenderer {
     });
   }
 
-  private onUserScroll(): void {
-    this.autoScrollBlocked = true;
-    this.scrollContainer.classList.add("UserScrolling");
+	private onUserScroll(): void {
+		if (this.programmaticScroll) return;
+		this.autoScrollBlocked = true;
+		this.scrollContainer.classList.add("UserScrolling");
 
     if (this.userScrollTimer) clearTimeout(this.userScrollTimer);
     this.userScrollTimer = setTimeout(() => {
@@ -642,6 +654,12 @@ export default class LyricsRenderer {
     const skipped =
       this.lastTimestamp >= 0 &&
       Math.abs(currentTimestamp - this.lastTimestamp) > 0.5;
+
+    // Read scrollTop before applyVirtualizationWindow can mount/unmount lines
+    // below — reading it after a mutation in the same task would force a
+    // synchronous layout flush instead of using the browser's normal,
+    // already-computed value from the previous frame.
+    this.frameScrollTop = this.simpleBar!.getScrollElement().scrollTop;
 
     // Recenter the mounted-detail window before animating so a newly-active line
     // (including after a big seek) is always mounted before we try to animate it.
@@ -673,15 +691,17 @@ export default class LyricsRenderer {
 
     this.updateBlur(frame.ctx);
 
-    if (this.scroller) {
-      if (hasActive) {
-        this.scroller.update(deltaTime);
-      } else {
-        this.scroller.snapToTarget();
-      }
-    }
+		if (this.scroller) {
+			this.programmaticScroll = true;
+			if (hasActive) {
+				this.scroller.update(deltaTime);
+			} else {
+				this.scroller.snapToTarget();
+			}
+			this.programmaticScroll = false;
+		}
 
-    if (skipped) {
+		if (skipped) {
       this.autoScrollBlocked = false;
       this.scrollContainer.classList.remove("UserScrolling");
       this.scrollToActive(true);
@@ -717,10 +737,9 @@ export default class LyricsRenderer {
   /** True if a line's cached position is within (or near) the visible scroll window.
    * Used to avoid spending frame time easing springs on lines the user cannot see. */
   private isLineNearViewport(line: LineInfo): boolean {
-    const scrollEl = this.simpleBar!.getScrollElement();
-    const scrollTop = scrollEl.scrollTop;
+    const scrollTop = this.frameScrollTop;
     const containerHeight =
-      this.cachedContainerHeight || scrollEl.clientHeight;
+      this.cachedContainerHeight || this.simpleBar!.getScrollElement().clientHeight;
     const margin = containerHeight; // one extra viewport of slack above/below
     const top = line.cachedOffsetTop;
     const bottom = top + line.cachedHeight;
@@ -1396,65 +1415,77 @@ export default class LyricsRenderer {
     }
   }
 
-  private scrollToActive(instant?: boolean): void {
-    if (!get("autoScroll")) return;
+	private scrollToActive(instant?: boolean): void {
+		if (!get("autoScroll")) return;
 
-    const activeIdx = this.lines.findIndex((l) => l.state === "Active");
-    if (activeIdx === this.lastActiveIdx && !instant) return;
-    this.lastActiveIdx = activeIdx;
+		const activeIdx = this.lines.findIndex((l) => l.state === "Active");
+		if (activeIdx === this.lastActiveIdx && !instant) return;
+		this.lastActiveIdx = activeIdx;
 
-    if (activeIdx < 0) {
-      if (this.lyricsEnded) {
-        const scrollEl = this.simpleBar!.getScrollElement();
-        scrollEl.scrollTop = scrollEl.scrollHeight;
-      }
-      return;
-    }
+		if (activeIdx < 0) {
+			if (this.lyricsEnded) {
+				const scrollEl = this.simpleBar!.getScrollElement();
+				this.programmaticScroll = true;
+				scrollEl.scrollTop = scrollEl.scrollHeight;
+				this.programmaticScroll = false;
+			}
+			return;
+		}
 
-    const activeLine = this.lines[activeIdx];
+		const activeLine = this.lines[activeIdx];
 
-    if (this.scroller) {
-      const lineCenter =
-        activeLine.cachedOffsetTop + activeLine.cachedHeight / 2;
-      this.scroller.setActiveLine(lineCenter, this.cachedContainerHeight);
-      if (instant) this.scroller.snapToTarget();
-      return;
-    }
+		if (this.scroller) {
+			const lineCenter =
+				activeLine.cachedOffsetTop + activeLine.cachedHeight / 2;
+			this.scroller.setActiveLine(
+				lineCenter,
+				this.cachedContainerHeight,
+				this.cachedMaxScroll,
+			);
+			if (instant) {
+				this.programmaticScroll = true;
+				this.scroller.snapToTarget();
+				this.programmaticScroll = false;
+			}
+			return;
+		}
 
-    const scrollEl = this.simpleBar!.getScrollElement();
-    const containerHeight =
-      this.cachedContainerHeight || scrollEl.clientHeight;
-    const scrollTop = scrollEl.scrollTop;
+		const scrollEl = this.simpleBar!.getScrollElement();
+		const containerHeight =
+			this.cachedContainerHeight || scrollEl.clientHeight;
+		const scrollTop = scrollEl.scrollTop;
 
-    const lineRelativeTop = activeLine.cachedOffsetTop - scrollTop;
-    const lineHeight = activeLine.cachedHeight;
+		const lineRelativeTop = activeLine.cachedOffsetTop - scrollTop;
+		const lineHeight = activeLine.cachedHeight;
 
-    let targetTop: number;
-    if (this.viewMode === "card") {
-      const zones: Record<
-        string,
-        { min: number; max: number; target: number }
-      > = {
-        static: { min: 0.15, max: 0.7, target: 0.15 },
-        gentle: { min: 0.25, max: 0.55, target: 0.25 },
-        active: { min: 0.3, max: 0.45, target: 0.25 },
-      };
-      const z = zones[this.cardScrollMode] ?? zones.static;
-      if (
-        lineRelativeTop < containerHeight * z.min ||
-        lineRelativeTop > containerHeight * z.max
-      ) {
-        targetTop = scrollTop + lineRelativeTop - containerHeight * z.target;
-      } else {
-        return;
-      }
-    } else {
-      const targetY = containerHeight * 0.4;
-      targetTop = scrollTop + lineRelativeTop - targetY + lineHeight / 2;
-    }
+		let targetTop: number;
+		if (this.viewMode === "card") {
+			const zones: Record<
+				string,
+				{ min: number; max: number; target: number }
+			> = {
+				static: { min: 0.15, max: 0.7, target: 0.15 },
+				gentle: { min: 0.25, max: 0.55, target: 0.25 },
+				active: { min: 0.3, max: 0.45, target: 0.25 },
+			};
+			const z = zones[this.cardScrollMode] ?? zones.static;
+			if (
+				lineRelativeTop < containerHeight * z.min ||
+				lineRelativeTop > containerHeight * z.max
+			) {
+				targetTop = scrollTop + lineRelativeTop - containerHeight * z.target;
+			} else {
+				return;
+			}
+		} else {
+			const targetY = containerHeight * 0.4;
+			targetTop = scrollTop + lineRelativeTop - targetY + lineHeight / 2;
+		}
 
-    scrollEl.scrollTop = Math.round(targetTop);
-  }
+		this.programmaticScroll = true;
+		scrollEl.scrollTop = Math.round(targetTop);
+		this.programmaticScroll = false;
+	}
 
   public destroy(): void {
     this.destroyed = true;
@@ -1472,11 +1503,7 @@ export default class LyricsRenderer {
   private isActive(): boolean {
     if (this.destroyed) return false;
     if (this.lyricsEnded) return false;
-    for (const line of this.lines) {
-      if (line.state === "Active") return true;
-      if (line.state === "Sung" && !line.settled) return true;
-    }
-    return false;
+    return true;
   }
 
   public appendCredits(creditsEl: HTMLElement): void {
