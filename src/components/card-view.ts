@@ -13,7 +13,7 @@ const NATIVE_LYRICS_QUERY =
 
 const CloseIcon = `<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M1.47 1.47a.75.75 0 0 1 1.06 0L8 6.94l5.47-5.47a.75.75 0 1 1 1.06 1.06L9.06 8l5.47 5.47a.75.75 0 1 1-1.06 1.06L8 9.06l-5.47 5.47a.75.75 0 0 1-1.06-1.06L6.94 8 1.47 2.53a.75.75 0 0 1 0-1.06z"/></svg>`;
 const LyricsIcon = `<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M13.5 1h-11A1.5 1.5 0 0 0 1 2.5v11A1.5 1.5 0 0 0 2.5 15h11a1.5 1.5 0 0 0 1.5-1.5v-11A1.5 1.5 0 0 0 13.5 1Zm-7 11H4V9h2.5v3Zm4 0H8V5h2.5v7Zm2.5 0h-2.5V7H16v5a1 1 0 0 1-1 1Z"/></svg>`;
-const ExpandIcon = `<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M1.5 1h5v1.5H3.06l3.72 3.72-1.06 1.06L2 3.56V5.5H.5v-4a.5.5 0 0 1 .5-.5zm13 0a.5.5 0 0 1 .5.5v4H13.5V3.56l-3.72 3.72-1.06-1.06L12.44 2.5H10.5V1h5zM1.5 15a.5.5 0 0 1-.5-.5v-4H2.5V12.44l3.72-3.72 1.06 1.06L3.56 13.5H5.5V15h-4zm13 0h-4v-1.5h1.94l-3.72-3.72 1.06-1.06L14 12.44V10.5H15.5v4z"/></svg>`;
+const ExpandIcon = `<svg viewBox="0 0 48 48" fill="currentColor" style="transform:scaleX(-1)"><path d="M18.6,26.6,8,37.2V30.1A2.1,2.1,0,0,0,6.3,28,2,2,0,0,0,4,30V42a2,2,0,0,0,2,2H17.9A2.1,2.1,0,0,0,20,42.3,2,2,0,0,0,18,40H10.8L21.3,29.5a2.1,2.1,0,0,0,.3-2.7A1.9,1.9,0,0,0,18.6,26.6Z"/><path d="M30,4a2,2,0,0,0-2,2.3A2.1,2.1,0,0,0,30.1,8h7.1L26.7,18.5a2,2,0,0,0-.2,2.8A1.8,1.8,0,0,0,28,22a2,2,0,0,0,1.4-.6L40,10.8v7.1A2.1,2.1,0,0,0,41.7,20,2,2,0,0,0,44,18V6a2,2,0,0,0-2-2Z"/></svg>`;
 
 let card: HTMLDivElement | null = null;
 let header: HTMLDivElement | null = null;
@@ -133,7 +133,7 @@ function populateBody(lyrics: TransformedLyrics): void {
   }
 }
 
-function setLyricsVisibility(visible: boolean): void {
+export function setLyricsVisibility(visible: boolean): void {
   setVisible(visible);
   reactToVisibility();
 }

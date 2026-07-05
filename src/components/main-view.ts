@@ -3,10 +3,12 @@ import { loadLyrics, onLyricsChange } from "../stores/lyrics";
 import { setPageMode } from "../stores/page";
 import { get } from "../stores/settings";
 import { whyamidoingthis, getNoLyricsMessage } from "../utils/no-lyrics-messages";
+import { setLyricsVisibility } from "./card-view";
 import LyricsRenderer from "../modules/lyrics-renderer";
 
 const BASE_ROUTE = "/vivid-lyrics";
-const CinemaIcon = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="2" y1="7" x2="7" y2="7"/><line x1="2" y1="17" x2="7" y2="17"/><line x1="17" y1="7" x2="22" y2="7"/><line x1="17" y1="17" x2="22" y2="17"/></svg>`;
+const CinemaIcon = `<svg viewBox="0 0 48 48" fill="currentColor"><path d="M18.6,26.6,8,37.2V30.1A2.1,2.1,0,0,0,6.3,28,2,2,0,0,0,4,30V42a2,2,0,0,0,2,2H17.9A2.1,2.1,0,0,0,20,42.3,2,2,0,0,0,18,40H10.8L21.3,29.5a2.1,2.1,0,0,0,.3-2.7A1.9,1.9,0,0,0,18.6,26.6Z"/><path d="M30,4a2,2,0,0,0-2,2.3A2.1,2.1,0,0,0,30.1,8h7.1L26.7,18.5a2,2,0,0,0-.2,2.8A1.8,1.8,0,0,0,28,22a2,2,0,0,0,1.4-.6L40,10.8v7.1A2.1,2.1,0,0,0,41.7,20,2,2,0,0,0,44,18V6a2,2,0,0,0-2-2Z"/></svg>`;
+const ShrinkIcon = `<svg viewBox="0 0 16 16" fill="currentColor"><path d="M0,0L16,0L16,16L0,16L0,0ZM12,14L12,2L2,2L2,14L12,14ZM5.586,5.414L8.172,8L5.586,10.586L7,12L11,8L7,4L5.586,5.414Z"/></svg>`;
 
 let pageContainer: HTMLDivElement | null = null;
 let hiddenSiblings: HTMLElement[] = [];
@@ -93,6 +95,16 @@ function open(): void {
   cinemaBtn.innerHTML = CinemaIcon;
   cinemaBtn.addEventListener("click", () => setPageMode("cinema"));
   controls.appendChild(cinemaBtn);
+
+  const shrinkBtn = document.createElement("button");
+  shrinkBtn.className = "VL-MainControlBtn";
+  shrinkBtn.title = "Shrink to Now Playing";
+  shrinkBtn.innerHTML = ShrinkIcon;
+  shrinkBtn.addEventListener("click", () => {
+    (Spicetify.Platform.History as any).goBack();
+    setTimeout(() => setLyricsVisibility(true), 100);
+  });
+  controls.appendChild(shrinkBtn);
 
   pageContainer.appendChild(content);
   pageContainer.appendChild(controls);

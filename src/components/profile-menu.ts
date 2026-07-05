@@ -1,6 +1,6 @@
 import { openModal } from "./settings-modal";
 
-const SettingsIcon = `<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0a1.25 1.25 0 1 0 0 2.5A1.25 1.25 0 0 0 8 0Zm3.12 3.07a.75.75 0 0 1 .13 1.05l-1.2 2.15a.75.75 0 0 1-.64.38H6.59a.75.75 0 0 1-.64-.38l-1.2-2.15a.75.75 0 1 1 1.3-.75l.7 1.23h3.4l.7-1.23a.75.75 0 0 1 1.05-.13ZM8 4a4 4 0 1 0 0 8 4 4 0 0 0 0-8Zm0 6.5a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5Z"/></svg>`;
+const SettingsIcon = `<svg viewBox="0 0 16 16" fill="currentColor"><path d="M4,12H0v2h4v1h3v-4H4V12zM9,10h3V6H9v1H0v2h9V10zM3,5h3V1H3v1H0v2h3V5zM8,14h8v-2H8V14zM7,2v2h9V2H7zM13,9h3V7h-3V9z"/></svg>`;
 
 let registered = false;
 
