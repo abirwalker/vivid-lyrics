@@ -29,7 +29,7 @@ function renderLyrics(lyrics: TransformedLyrics | null): void {
   lyricsEl.innerHTML = "";
 
   if (!lyrics) {
-    lyricsEl.innerHTML = `<div class="VL-StatusText" style="text-align:center;">${getNoLyricsMessage()}</div>`;
+    lyricsEl.innerHTML = `<div class="VL-NoLyrics">${getNoLyricsMessage()}</div>`;
     return;
   }
 
