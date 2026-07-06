@@ -15,6 +15,8 @@ let portal: HTMLDivElement | null = null;
 let content: HTMLDivElement | null = null;
 let controlsContainer: HTMLDivElement | null = null;
 let activeRenderer: LyricsRenderer | null = null;
+let isLoading = false;
+let lastUri: string | null = null;
 
 function renderLyrics(lyrics: TransformedLyrics | null): void {
   if (!content) return;
@@ -29,9 +31,22 @@ function renderLyrics(lyrics: TransformedLyrics | null): void {
   lyricsEl.innerHTML = "";
 
   if (!lyrics) {
-    lyricsEl.innerHTML = `<div class="VL-NoLyrics">${getNoLyricsMessage()}</div>`;
+    if (isLoading) {
+      const skeleton = document.createElement("div");
+      skeleton.className = "VL-Skeleton";
+      for (let i = 0; i < 20; i++) {
+        const line = document.createElement("div");
+        line.className = "VL-SkeletonLine";
+        skeleton.appendChild(line);
+      }
+      lyricsEl.appendChild(skeleton);
+    } else {
+      lyricsEl.innerHTML = `<div class="VL-NoLyrics">${getNoLyricsMessage()}</div>`;
+    }
     return;
   }
+
+  isLoading = false;
 
   if (lyrics.type === "Static") {
     lyricsEl.style.setProperty("--vl-font-size", String(get("fontSize") / 100));
@@ -122,6 +137,9 @@ function show(): void {
   portal.style.display = "block";
   document.addEventListener("keydown", onKeyDown);
   document.addEventListener("fullscreenchange", onFullscreenChange);
+  const currentUri = Spicetify.Player.data?.item?.uri ?? null;
+  isLoading = !getLyrics();
+  lastUri = currentUri;
   updateControls();
   renderLyrics(getLyrics());
 }
@@ -188,6 +206,13 @@ export function setupFullscreen(): void {
   setupModeReaction();
   onLyricsChange((lyrics) => {
     if (getPageMode() !== "page") {
+      const currentUri = Spicetify.Player.data?.item?.uri ?? null;
+      if (currentUri !== lastUri) {
+        isLoading = true;
+        lastUri = currentUri;
+      } else {
+        isLoading = false;
+      }
       renderLyrics(lyrics);
     }
   });

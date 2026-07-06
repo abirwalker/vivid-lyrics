@@ -15,3 +15,47 @@ div[data-testid="test-ref-div"] {
     margin: 0 !important;
     overflow: hidden !important;
 }
+
+@keyframes vl-shimmer {
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+}
+
+.VL-Skeleton {
+    display: flex;
+    flex-direction: column;
+    gap: 1cqw;
+    padding: 16px;
+    flex: 1;
+
+    .VL-SkeletonLine {
+        height: 1.6em;
+        border-radius: 4px;
+        background: linear-gradient(
+            90deg,
+            rgba(255, 255, 255, 0.06) 25%,
+            rgba(255, 255, 255, 0.12) 50%,
+            rgba(255, 255, 255, 0.06) 75%
+        );
+        background-size: 200% 100%;
+        animation: vl-shimmer 1.8s ease-in-out infinite;
+
+        &:nth-child(odd) { width: 100%; }
+        &:nth-child(even) { width: 70%; }
+        &:last-child { width: 55%; }
+    }
+}
+
+#VividLyrics-MainPage .VL-Skeleton {
+    padding: 20cqw clamp(2rem, 10vw, 20rem) 3em clamp(2rem, 10vw, 20rem);
+    gap: 1.5cqw;
+}
+
+.VividLyrics-FullscreenContent .VL-Skeleton {
+    padding: 0 64px;
+}
+
+#VividLyrics-Card .VL-Skeleton {
+    padding: 24px 16px;
+    gap: 10px;
+}

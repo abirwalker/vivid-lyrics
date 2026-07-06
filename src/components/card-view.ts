@@ -156,10 +156,14 @@ function reactToVisibility(): void {
       populateBody(currentLyrics);
     } else {
       clearBody();
-      const loading = document.createElement("div");
-      loading.className = "VL-StatusText";
-      loading.textContent = "Loading lyrics...";
-      body!.appendChild(loading);
+      const skeleton = document.createElement("div");
+      skeleton.className = "VL-Skeleton";
+      for (let i = 0; i < 20; i++) {
+        const line = document.createElement("div");
+        line.className = "VL-SkeletonLine";
+        skeleton.appendChild(line);
+      }
+      body!.appendChild(skeleton);
       const uri = getTrackUri();
       if (uri) loadLyrics(uri).then((lyrics) => {
         if (lyrics && getVisible()) onLyricsUpdate(lyrics);
@@ -235,10 +239,14 @@ async function onSongChange() {
   header!.appendChild(headerActions!);
   showBtn!.remove();
   clearBody();
-  const loading = document.createElement("div");
-  loading.className = "VL-StatusText";
-  loading.textContent = "Loading lyrics...";
-  body!.appendChild(loading);
+  const skeleton = document.createElement("div");
+  skeleton.className = "VL-Skeleton";
+  for (let i = 0; i < 20; i++) {
+    const line = document.createElement("div");
+    line.className = "VL-SkeletonLine";
+    skeleton.appendChild(line);
+  }
+  body!.appendChild(skeleton);
   ensureInDOM();
 
   const lyrics = await loadPromise;

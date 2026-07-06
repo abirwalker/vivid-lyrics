@@ -15,6 +15,8 @@ const ShrinkIcon = `<svg viewBox="0 0 16 16" fill="currentColor"><path d="M0,0L1
 let pageContainer: HTMLDivElement | null = null;
 let hiddenSiblings: HTMLElement[] = [];
 let isOpen = false;
+let isLoading = false;
+let lastUri: string | null = null;
 let lyricsUnsub: (() => void) | null = null;
 let activeRenderer: LyricsRenderer | null = null;
 
@@ -44,9 +46,22 @@ function renderPage(lyrics: TransformedLyrics | null): void {
   content.innerHTML = "";
 
   if (!lyrics) {
-    content.innerHTML = `<div class="VL-NoLyrics">${getNoLyricsMessage()}</div>`;
+    if (isLoading) {
+      const skeleton = document.createElement("div");
+      skeleton.className = "VL-Skeleton";
+    for (let i = 0; i < 20; i++) {
+        const line = document.createElement("div");
+        line.className = "VL-SkeletonLine";
+        skeleton.appendChild(line);
+      }
+      content.appendChild(skeleton);
+    } else {
+      content.innerHTML = `<div class="VL-NoLyrics">${getNoLyricsMessage()}</div>`;
+    }
     return;
   }
+
+  isLoading = false;
 
   if (lyrics.type === "Static") {
     const scroll = document.createElement("div");
@@ -127,13 +142,31 @@ function open(): void {
 
   const uri = Spicetify.Player.data?.item?.uri;
   if (uri) {
+    isLoading = true;
+    const skeleton = document.createElement("div");
+    skeleton.className = "VL-Skeleton";
+    for (let i = 0; i < 20; i++) {
+      const line = document.createElement("div");
+      line.className = "VL-SkeletonLine";
+      skeleton.appendChild(line);
+    }
+    content.appendChild(skeleton);
     loadLyrics(uri).then((lyrics) => {
       if (isOpen) renderPage(lyrics);
     });
   }
 
   lyricsUnsub = onLyricsChange((lyrics) => {
-    if (isOpen) renderPage(lyrics);
+    if (isOpen) {
+      const currentUri = Spicetify.Player.data?.item?.uri ?? null;
+      if (currentUri !== lastUri) {
+        isLoading = true;
+        lastUri = currentUri;
+      } else {
+        isLoading = false;
+      }
+      renderPage(lyrics);
+    }
   });
 }
 
