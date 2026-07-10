@@ -15,7 +15,7 @@ export type Settings = {
   controlsPosition: "top" | "bottom";
   centeredText: boolean;
   centeredTextCard: boolean;
-  springEnabled: boolean;
+  animationStyle: "spicy-bounce" | "wobble";
   springMode: "legacy" | "current";
   springIntensity: number;
   gradientDirection: "vertical" | "horizontal";
@@ -40,7 +40,7 @@ const defaults: Settings = {
   controlsPosition: "top",
   centeredText: false,
   centeredTextCard: false,
-  springEnabled: true,
+  animationStyle: "spicy-bounce",
   springMode: "current",
   springIntensity: 1.0,
   gradientDirection: "vertical",

@@ -18,7 +18,7 @@ const STEP_CAP = 1 / 30;
 const MAX_DEBT = 1 / 4;
 
 export interface FrameCtx {
-  springEnabled: boolean;
+  animationStyle: "spicy-bounce" | "wobble";
   glowIntensity: number;
   blurEnabled: boolean;
   blurStrengthMul: number;
@@ -28,6 +28,7 @@ export interface FrameCtx {
 export interface SharedFrame {
   currentTimestamp: number;
   deltaTime: number;
+  isPlaying: boolean;
   springConfig: SpicySpringConfig;
   ctx: FrameCtx;
 }
@@ -38,6 +39,7 @@ class RenderLoopCoordinator {
   private listeners = new Map<symbol, FrameListener>();
   private rafId = 0;
   private lastFrameTime = 0;
+  private lastTimestamp = -1;
   private timeDebt = 0;
   private running = false;
 
@@ -82,12 +84,17 @@ class RenderLoopCoordinator {
     this.timeDebt -= deltaTime;
 
     const blurStrength = get("blurStrength");
+    const animationStyle = get("animationStyle");
+    const currentTimestamp = Spicetify.Player.getProgress() / 1000;
+    const isPlaying = currentTimestamp !== this.lastTimestamp;
+    this.lastTimestamp = currentTimestamp;
     const frame: SharedFrame = {
-      currentTimestamp: Spicetify.Player.getProgress() / 1000,
+      currentTimestamp,
       deltaTime,
-      springConfig: { enabled: get("springEnabled") },
+      isPlaying,
+      springConfig: { enabled: animationStyle === "spicy-bounce" },
       ctx: {
-        springEnabled: get("springEnabled"),
+        animationStyle,
         glowIntensity: get("glowIntensity"),
         blurEnabled: get("blurEnabled"),
         blurStrengthMul: blurStrength === "light" ? 0.5 : blurStrength === "heavy" ? 1.5 : 1,

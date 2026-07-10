@@ -29,6 +29,17 @@ import {
   type SpicySpringConfig,
   type DotSpringSet,
 } from "./spicy-spring";
+import {
+  createWobbleState,
+  updateSmoothPosition,
+  ensurePrecompute,
+  animateWobbleLine,
+  snapWobbleToIdle,
+  invalidateWobbleRowCache,
+  type WobbleLineState,
+  type WobbleCharEl,
+  type WobbleWord,
+} from "./wobble";
 
 const EMPHASIS_LONGER_THAN_MS = 1500;
 const INTERLUDE_GAP_THRESHOLD_S = 3;
@@ -91,11 +102,17 @@ type LineInfo = {
   mounted: boolean;
   detailedFragment: DocumentFragment | null;
   placeholder: HTMLElement | null;
+  /** Wobble-mode state: smooth position tracker + precomputed line data */
+  wobbleState: WobbleLineState | null;
+  /** Wobble-mode: ordered list of character spans with their line-text index */
+  wobbleChars: WobbleCharEl[] | null;
+  /** Wobble-mode: words reconstructed from syllable groups for the wobble engine */
+  wobbleWords: WobbleWord[] | null;
 };
 
 /** Per-frame settings + spline snapshot — read once, passed everywhere */
 type FrameCtx = {
-  springEnabled: boolean;
+  animationStyle: "spicy-bounce" | "wobble";
   glowIntensity: number;
   blurEnabled: boolean;
   blurStrengthMul: number;
@@ -176,6 +193,7 @@ export default class LyricsRenderer {
   private blurMap: number[];
   private viewMode: "main" | "card";
   private cardScrollMode: "static" | "gentle" | "active";
+  private resizeObserver: ResizeObserver | null = null;
   constructor(
     parentContainer: HTMLElement,
     private lyrics: TransformedLyrics,
@@ -225,11 +243,32 @@ export default class LyricsRenderer {
 
     this.watchUserScroll();
 
+    // A wobble line's row cache (§ensureRowCache in wobble.ts) is measured
+    // once and memoized. If this container's width ever changes while a
+    // line is actively playing — window resize, sidebar/queue panel
+    // toggling, view mode changes, anything that reflows the lyric text —
+    // the cached row assignment goes stale and would otherwise stay wrong
+    // for the rest of that line's playthrough, since nothing else
+    // invalidates it. Any resize forces every line's cache to rebuild on
+    // its next active frame.
+    if (typeof ResizeObserver !== "undefined") {
+      this.resizeObserver = new ResizeObserver(() => {
+        this.invalidateAllWobbleRowCaches();
+      });
+      this.resizeObserver.observe(this.scrollContainer);
+    }
+
     if (lyrics.type !== "Static") {
       this.unregisterFrame = renderLoop.register((frame) => {
         this.onFrame(frame);
         return this.isActive();
       });
+    }
+  }
+
+  private invalidateAllWobbleRowCaches(): void {
+    for (const line of this.lines) {
+      if (line.wobbleState) invalidateWobbleRowCache(line.wobbleState);
     }
   }
 
@@ -357,6 +396,9 @@ export default class LyricsRenderer {
           mounted: true,
           detailedFragment: null,
           placeholder: null,
+          wobbleState: null,
+          wobbleChars: null,
+          wobbleWords: null,
         });
         continue;
       }
@@ -531,6 +573,58 @@ export default class LyricsRenderer {
 
       this.lyricsContainer.appendChild(group);
 
+      // Build wobble data for this line
+      let wobbleChars: WobbleCharEl[] | null = null;
+      let wobbleWords: WobbleWord[] | null = null;
+      let wobbleState: WobbleLineState | null = null;
+      if (isSyllableType && syllableData.length > 0) {
+        // Reconstruct words from syllable groups (mirrors the words[] loop above)
+        const wWords: WobbleWord[] = [];
+        let wCurrentWord: SyllableInfo[] | null = null;
+        for (let i = 0; i < syllableData.length; i++) {
+          const syllables: any[] = item.Lead.Syllables;
+          const isFirstInWord = i === 0 || !syllables[i - 1].IsPartOfWord;
+          if (isFirstInWord) {
+            wCurrentWord = [syllableData[i]];
+            wWords.push({
+              text: syllableData[i].span.textContent ?? "",
+              startTime:
+                syllableData[i].startScale * duration + startTime,
+              endTime:
+                syllableData[i].endScale * duration + startTime,
+              hasTrailingSpace: false,
+              emphasized: syllableData[i].emphasized,
+            });
+          } else if (wCurrentWord) {
+            wCurrentWord.push(syllableData[i]);
+            // Update last word's text and end time
+            const last = wWords[wWords.length - 1];
+            last.text += syllableData[i].span.textContent ?? "";
+            last.endTime =
+              syllableData[i].endScale * duration + startTime;
+            if (syllableData[i].emphasized) last.emphasized = true;
+          }
+        }
+        // Fix trailing spaces: mark last word in each original word group
+        if (wWords.length > 0) {
+          wWords[wWords.length - 1].hasTrailingSpace = true;
+        }
+        wobbleWords = wWords;
+
+        // Flatten letters in line-text order
+        const flatChars: WobbleCharEl[] = [];
+        let charIdx = 0;
+        for (const syl of syllableData) {
+          for (const ltr of syl.letters) {
+            flatChars.push({ span: ltr.span, charIndex: charIdx });
+            charIdx++;
+          }
+        }
+        wobbleChars = flatChars;
+        wobbleState = createWobbleState();
+        ensurePrecompute(wobbleState, wWords.map((w) => w.text).join(""), wWords);
+      }
+
       this.lines.push({
         container: group,
         vocals,
@@ -550,6 +644,9 @@ export default class LyricsRenderer {
         mounted: true,
         detailedFragment: null,
         placeholder,
+        wobbleState,
+        wobbleChars,
+        wobbleWords,
       });
     }
   }
@@ -659,6 +756,7 @@ export default class LyricsRenderer {
     }
 
     const deltaTime = frame.deltaTime;
+    const isPlaying = frame.isPlaying;
     const skipped =
       this.lastTimestamp >= 0 &&
       Math.abs(currentTimestamp - this.lastTimestamp) > 0.5;
@@ -683,6 +781,7 @@ export default class LyricsRenderer {
         line,
         currentTimestamp,
         deltaTime,
+        isPlaying,
         frame.springConfig,
         frame.ctx,
       );
@@ -722,7 +821,9 @@ export default class LyricsRenderer {
 
   /** Snap a line to its initial Idle state — safe because no animation has happened yet */
   private snapToIdle(line: LineInfo): void {
-    if (line.isSyllableType && line.syllables.length > 0) {
+    if (line.wobbleChars && line.wobbleState) {
+      snapWobbleToIdle(line.wobbleChars);
+    } else if (line.isSyllableType && line.syllables.length > 0) {
       for (const syl of line.syllables) {
         syl.span.style.setProperty("--char-progress", "-20%");
         for (const ltr of syl.letters) {
@@ -767,7 +868,16 @@ export default class LyricsRenderer {
    * lines can turn Sung faster than their springs converge, the number of
    * off-screen lines still being animated keeps growing over the course of a song. */
   private finalizeLineSungInstant(line: LineInfo, ctx: FrameCtx): void {
-    if (line.isSyllableType && line.syllables.length > 0) {
+    if (line.wobbleChars) {
+      // Wobble: snap all chars to fully-sung state
+      for (const ch of line.wobbleChars) {
+        setCachedInline(ch.span, "scale", "1");
+        setCachedInline(ch.span, "transform", "");
+        setCachedStyle(ch.span, "--char-progress", "120%");
+        setCachedStyle(ch.span, "--text-shadow-blur-radius", "4px");
+        setCachedStyle(ch.span, "--text-shadow-opacity", "0%");
+      }
+    } else if (line.isSyllableType && line.syllables.length > 0) {
       const scale = ctx.splines.Scale.at(1);
       const yOffset = ctx.splines.YOffset.at(1);
       const glow = ctx.splines.Glow.at(1);
@@ -843,7 +953,16 @@ export default class LyricsRenderer {
 
   /** Set spring goals to final Sung position — springs will ease there naturally */
   private setSungGoals(line: LineInfo, ctx: FrameCtx): void {
-    if (line.isSyllableType && line.syllables.length > 0) {
+    if (line.wobbleChars) {
+      // Wobble: snap all chars to fully-sung state
+      for (const ch of line.wobbleChars) {
+        setCachedInline(ch.span, "scale", "1");
+        setCachedInline(ch.span, "transform", "");
+        setCachedStyle(ch.span, "--char-progress", "120%");
+        setCachedStyle(ch.span, "--text-shadow-blur-radius", "4px");
+        setCachedStyle(ch.span, "--text-shadow-opacity", "0%");
+      }
+    } else if (line.isSyllableType && line.syllables.length > 0) {
       for (const syl of line.syllables) {
         syl.span.style.setProperty("--char-progress", "120%");
         if (syl.springs) {
@@ -876,6 +995,7 @@ export default class LyricsRenderer {
 
   /** Check if all springs on a line have settled (CanSleep) */
   private areSpringsSettled(line: LineInfo): boolean {
+    if (line.wobbleChars) return true; // wobble has no springs
     if (line.isSyllableType && line.syllables.length > 0) {
       for (const syl of line.syllables) {
         if (syl.springs) {
@@ -997,7 +1117,9 @@ export default class LyricsRenderer {
    * transform, so giving them `will-change` just wastes a compositor
    * layer for nothing. */
   private promoteLine(line: LineInfo): void {
-    if (line.isSyllableType) {
+    if (line.wobbleChars) {
+      for (const ch of line.wobbleChars) promoteToGPU(ch.span);
+    } else if (line.isSyllableType) {
       for (const syl of line.syllables) {
         promoteToGPU(syl.span);
         for (const ltr of syl.letters) {
@@ -1013,7 +1135,9 @@ export default class LyricsRenderer {
 
   /** Demote line elements from GPU layer to free compositor memory */
   private demoteLine(line: LineInfo): void {
-    if (line.isSyllableType) {
+    if (line.wobbleChars) {
+      for (const ch of line.wobbleChars) demoteFromGPU(ch.span);
+    } else if (line.isSyllableType) {
       for (const syl of line.syllables) {
         demoteFromGPU(syl.span);
         for (const ltr of syl.letters) {
@@ -1031,6 +1155,7 @@ export default class LyricsRenderer {
     line: LineInfo,
     songTimestamp: number,
     deltaTime: number,
+    isPlaying: boolean,
     springConfig: SpicySpringConfig,
     ctx: FrameCtx,
   ): void {
@@ -1107,6 +1232,32 @@ export default class LyricsRenderer {
     const timeScale =
       line.duration > 0 ? clamp(relativeTime / line.duration, 0, 1) : 1;
 
+    // ── Wobble mode: per-character metro-style animation ──
+    if (ctx.animationStyle === "wobble" && line.wobbleChars && line.wobbleState && line.wobbleWords) {
+      ensurePrecompute(
+        line.wobbleState,
+        line.wobbleWords.map((w) => w.text).join(""),
+        line.wobbleWords,
+      );
+      updateSmoothPosition(
+        line.wobbleState,
+        () => songTimestamp * 1000,
+        isPlaying,
+        0,
+      );
+      animateWobbleLine(
+        line.wobbleState,
+        line.wobbleChars,
+        line.wobbleState.smoothPosition,
+        performance.now(),
+        ctx.glowIntensity,
+        line.duration * 1000,
+        this.scrollContainer.clientWidth,
+      );
+      return;
+    }
+
+    // ── Spicy Bounce mode: spring-based animation ──
     if (line.isSyllableType && line.syllables.length > 0 && line.duration > 0) {
       const activeScratch = { scale: 0, yOffset: 0, glow: 0 };
 
@@ -1505,6 +1656,8 @@ export default class LyricsRenderer {
     this.scroller?.dispose();
     this.simpleBar?.unMount();
     this.simpleBar = null;
+    this.resizeObserver?.disconnect();
+    this.resizeObserver = null;
 
     this.lines = [];
     this.scrollContainer.remove();

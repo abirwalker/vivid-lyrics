@@ -183,7 +183,7 @@ function buildContent(): HTMLElement {
   const content = document.createElement("div");
   content.className = "VL-Content";
 
-  // --- Spring conditional rows (hidden when Spicy Spring is off) ---
+  // --- Animation sub-rows (hidden when Wobble is selected) ---
   const springVersionRow = makeRow(
     "Spring Version",
     "Animation tuning style",
@@ -204,12 +204,12 @@ function buildContent(): HTMLElement {
     ),
   );
 
-  function syncSpringVisibility(): void {
-    const vis = get("springEnabled") ? "" : "none";
+  function syncAnimationSubRows(): void {
+    const vis = get("animationStyle") === "spicy-bounce" ? "" : "none";
     springVersionRow.style.display = vis;
     springIntensityRow.style.display = vis;
   }
-  syncSpringVisibility();
+  syncAnimationSubRows();
 
   // --- Blur conditional row ---
   const blurStrengthRow = makeRow(
@@ -295,12 +295,19 @@ function buildContent(): HTMLElement {
     ]],
     ["Animation", [
       {
-        label: "Spicy Spring",
-        desc: "Bouncy syllable animation",
-        control: makeToggle(s.springEnabled, (v) => {
-          set("springEnabled", v);
-          syncSpringVisibility();
-        }),
+        label: "Animation Style",
+        desc: "Lyrics animation mode",
+        control: makeSelect(
+          [
+            { label: "Spicy Bounce", value: "spicy-bounce" },
+            { label: "Wobble", value: "wobble" },
+          ],
+          s.animationStyle,
+          (v) => {
+            set("animationStyle", v as Settings["animationStyle"]);
+            syncAnimationSubRows();
+          },
+        ),
         after: springVersionRow,
         after2: springIntensityRow,
       },
