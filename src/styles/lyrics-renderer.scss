@@ -207,6 +207,9 @@ html.vl-centered-text .VividLyrics-FullscreenContent .VL-FS-Line,
 
 .Letter {
     display: inline-block;
+    // Grow from the left so scaling words push successors instead of
+    // overlapping their left neighbor (visible with adjacent emphasized words).
+    transform-origin: left center;
     background-image: linear-gradient(
         90deg,
         var(--vl-text-highlight) var(--char-progress, -20%),

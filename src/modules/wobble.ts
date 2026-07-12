@@ -2,6 +2,9 @@ import { setCachedStyle, setCachedInline } from "../utils/style-cache";
 import { makeSpline } from "./spicy-spring";
 
 const WOBBLE_WORDS_AHEAD = 1;
+// Sustained size bump for emphasized words while they are being sung, so the
+// emphasis doesn't collapse the instant the onset pop finishes.
+const EMPH_BASE_SCALE = 0.05;
 
 const glowSpline = makeSpline([
   { Time: 0, Value: 0 },
@@ -421,6 +424,25 @@ function computeGlow(
   return { alpha: v * 0.15 };
 }
 
+// Sustained emphasis: a smooth size bump that follows the word's sung
+// duration — scales up gently, peaks mid-word, then scales back down smoothly
+// (no snap up, no fast fade). Drives a visible push on following words.
+// No per-char motion (no wiggle).
+function computeEmphOffset(
+  wordItem: EffectiveWord | null,
+  sungFactor: number,
+  isWordSung: boolean,
+  _smoothPosition: number,
+): number {
+  if (!wordItem?.emphasized) return 0;
+  // sin(π·t): 0 at word start, peak at mid, 0 at word end — smooth rise+fall
+  // spread across the whole duration instead of a sudden pop or fast snap.
+  if (sungFactor > 0 && !isWordSung) {
+    return EMPH_BASE_SCALE * Math.sin(Math.PI * clamp(sungFactor, 0, 1));
+  }
+  return 0; // fully sung: envelope is already back at 0
+}
+
 // ── Public: Ensure precompute is up to date ────────────────────────────────
 
 export function ensurePrecompute(
@@ -561,8 +583,14 @@ export function animateWobbleLine(
     );
     const nudge = computeNudge(charLp, wordItem, sungFactor, isWordSung);
     const emphMul = wordItem?.emphasized ? 2 : 1;
+    const emphOffset = computeEmphOffset(
+      wordItem,
+      sungFactor,
+      isWordSung,
+      smoothPosition,
+    );
     const scaleX =
-      1 + wobble * 0.0375 * emphMul + crescendoX + nudge * 0.3;
+      1 + wobble * 0.0375 * emphMul + crescendoX + nudge * 0.3 + emphOffset;
     scaleXPass1[i] = scaleX;
     lineTotalPush[row] += charWidths[i] * (scaleX - 1) * 1.2;
   }
@@ -627,18 +655,19 @@ export function animateWobbleLine(
     }
 
     const emphMul = wordItem?.emphasized ? 2 : 1;
-    const scaleX = 1 + wobble * 0.0375 * emphMul + crescendoX + nudge * 0.3;
+    const emphOffset = computeEmphOffset(
+      wordItem,
+      sungFactor,
+      isWordSung,
+      smoothPosition,
+    );
+    const scaleX = 1 + wobble * 0.0375 * emphMul + crescendoX + nudge * 0.3 + emphOffset;
     const scaleY = 1;
     const waveY = 0;
 
     const charWidth = charWidths[i];
     const tx = lineCurrentPush[row];
     lineCurrentPush[row] += charWidth * (scaleX - 1) * 1.2;
-
-    const baseAlpha =
-      isWordSung || charLp > 0.99
-        ? 1
-        : 0.3 + 0.7 * sungFactor;
 
     const pct = -20 + clamp(charLp, 0, 1) * 140;
 

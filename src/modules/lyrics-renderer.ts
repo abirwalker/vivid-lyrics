@@ -1074,7 +1074,7 @@ export default class LyricsRenderer {
         }
       }
     } else if (!line.isSyllableType && line.syllables.length === 0) {
-      if (line.dots && line.dots.length > 0 && springConfig.enabled) {
+      if (line.dots && line.dots.length > 0 && (springConfig.enabled || ctx.animationStyle === "wobble")) {
         const dotScratch = { scale: 0, yOffset: 0, glow: 0, opacity: 0 };
         for (const dot of line.dots) {
           const v = stepDotSprings(dot.springs, deltaTime, dotScratch);
@@ -1094,7 +1094,7 @@ export default class LyricsRenderer {
         }
       }
       const lyricSpan = line.lyricSpanCache;
-      if (lyricSpan && line.glowSpring && springConfig.enabled) {
+      if (lyricSpan && line.glowSpring && (springConfig.enabled || ctx.animationStyle === "wobble")) {
         const gi = ctx.glowIntensity;
         const currentGlow = line.glowSpring.Step(deltaTime);
         setCachedStyle(
@@ -1415,7 +1415,7 @@ export default class LyricsRenderer {
         }
       }
     } else if (!line.isSyllableType && line.syllables.length === 0) {
-      if (line.dots && line.dots.length > 0 && springConfig.enabled) {
+      if (line.dots && line.dots.length > 0 && (springConfig.enabled || ctx.animationStyle === "wobble")) {
         const activeDotScratch = { scale: 0, yOffset: 0, glow: 0, opacity: 0 };
         for (const dot of line.dots) {
           const dotRelTime = songTimestamp - dot.startTime;
@@ -1452,7 +1452,7 @@ export default class LyricsRenderer {
         const gradientPos = lineProgress * 100;
         setCachedStyle(lyricSpan, "--line-progress", `${gradientPos}%`);
 
-        if (springConfig.enabled && line.glowSpring) {
+        if ((springConfig.enabled || ctx.animationStyle === "wobble") && line.glowSpring) {
           const gi = ctx.glowIntensity;
           const targetGlow = ctx.splines.LineGlow.at(lineProgress);
           line.glowSpring.SetGoal(targetGlow, replacePos);
