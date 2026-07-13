@@ -39,7 +39,6 @@ class RenderLoopCoordinator {
   private listeners = new Map<symbol, FrameListener>();
   private rafId = 0;
   private lastFrameTime = 0;
-  private lastTimestamp = -1;
   private timeDebt = 0;
   private running = false;
 
@@ -86,8 +85,7 @@ class RenderLoopCoordinator {
     const blurStrength = get("blurStrength");
     const animationStyle = get("animationStyle");
     const currentTimestamp = Spicetify.Player.getProgress() / 1000;
-    const isPlaying = currentTimestamp !== this.lastTimestamp;
-    this.lastTimestamp = currentTimestamp;
+    const isPlaying = Spicetify.Player.isPlaying();
     const frame: SharedFrame = {
       currentTimestamp,
       deltaTime,

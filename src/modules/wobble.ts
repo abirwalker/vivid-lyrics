@@ -51,6 +51,15 @@ interface LinePrecompute {
   charInWordMap: Int32Array;
   wordLenMap: Int32Array;
   hyphenGroupData: Map<number, HyphenGroupInfo>;
+  /** Count of original (pre-hyphen-split) words; sizes the origWobble scratch buffer. */
+  originalWordCount: number;
+}
+
+interface WobbleScratch {
+  sungFactor: Float64Array;
+  isWordSung: Uint8Array;
+  origWobble: Float64Array;
+  wordWobble: Float64Array;
 }
 
 interface RowCache {
@@ -75,6 +84,9 @@ export interface WobbleLineState {
    *  the line's char count changes, or on demand via invalidateWobbleRowCache (e.g.
    *  after a container resize that could change wrap points). */
   rowCache: RowCache | null;
+  /** Reusable per-frame word-factor/wobble buffers. Rebuilt only when word
+   *  counts change (see ensureWobbleScratch), not on every frame. */
+  scratch: WobbleScratch | null;
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -93,6 +105,7 @@ export function createWobbleState(): WobbleLineState {
     precompute: null,
     lineText: "",
     rowCache: null,
+    scratch: null,
   };
 }
 
@@ -299,22 +312,49 @@ function precomputeLine(
     charInWordMap,
     wordLenMap,
     hyphenGroupData,
+    originalWordCount: words.length,
   };
 }
 
 // ── Per-frame Computation ──────────────────────────────────────────────────
 
-function computeWordFactors(
+function ensureWobbleScratch(
+  state: WobbleLineState,
+  effectiveWordCount: number,
+  originalWordCount: number,
+): WobbleScratch {
+  const existing = state.scratch;
+  if (
+    existing &&
+    existing.sungFactor.length === effectiveWordCount &&
+    existing.origWobble.length === originalWordCount
+  ) {
+    return existing;
+  }
+  const scratch: WobbleScratch = {
+    sungFactor: new Float64Array(effectiveWordCount),
+    isWordSung: new Uint8Array(effectiveWordCount),
+    origWobble: new Float64Array(originalWordCount),
+    wordWobble: new Float64Array(effectiveWordCount),
+  };
+  state.scratch = scratch;
+  return scratch;
+}
+
+function fillWordFactors(
   effectiveWords: EffectiveWord[],
   smoothPosition: number,
-): { sungFactor: number; word: EffectiveWord; isWordSung: boolean }[] {
-  return effectiveWords.map((word) => {
+  sungFactorOut: Float64Array,
+  isWordSungOut: Uint8Array,
+): void {
+  for (let i = 0; i < effectiveWords.length; i++) {
+    const word = effectiveWords[i];
     const wStartMs = word.startTime * 1000;
     const wEndMs = word.endTime * 1000;
     const isWordSung = smoothPosition > wEndMs;
     const isWordActive =
       smoothPosition >= wStartMs && smoothPosition <= wEndMs;
-    const sungFactor = isWordSung
+    sungFactorOut[i] = isWordSung
       ? 1
       : isWordActive
         ? clamp(
@@ -323,33 +363,32 @@ function computeWordFactors(
             1,
           )
         : 0;
-    return { sungFactor, word, isWordSung };
-  });
+    isWordSungOut[i] = isWordSung ? 1 : 0;
+  }
 }
 
-function computeWordWobbles(
+function fillWordWobbles(
   effectiveWords: EffectiveWord[],
   effectiveToOriginalIdx: number[],
   smoothPosition: number,
-): number[] {
-  const origWobble = new Map<number, number>();
-
-  effectiveWords.forEach((word, wordIdx) => {
-    const origIdx = effectiveToOriginalIdx[wordIdx];
-    if (origWobble.has(origIdx)) return;
-
-    const startMs = word.startTime * 1000;
-    const t = smoothPosition - startMs;
-    let w = 0;
-    if (t >= 0 && t <= 750) {
-      w = t < 125 ? t / 125 : Math.max(0, 1 - (t - 125) / 625);
+  origWobbleScratch: Float64Array,
+  wordWobbleOut: Float64Array,
+): void {
+  origWobbleScratch.fill(-1);
+  for (let i = 0; i < effectiveWords.length; i++) {
+    const origIdx = effectiveToOriginalIdx[i];
+    let w = origWobbleScratch[origIdx];
+    if (w < 0) {
+      const startMs = effectiveWords[i].startTime * 1000;
+      const t = smoothPosition - startMs;
+      w = 0;
+      if (t >= 0 && t <= 750) {
+        w = t < 125 ? t / 125 : Math.max(0, 1 - (t - 125) / 625);
+      }
+      origWobbleScratch[origIdx] = w;
     }
-    origWobble.set(origIdx, w);
-  });
-
-  return effectiveWords.map(
-    (_, wordIdx) => origWobble.get(effectiveToOriginalIdx[wordIdx]) ?? 0,
-  );
+    wordWobbleOut[i] = w;
+  }
 }
 
 function computeCharLp(
@@ -454,6 +493,7 @@ export function ensurePrecompute(
   state.lineText = lineText;
   state.precompute = precomputeLine(lineText, words);
   state.rowCache = null; // char count/positions may have changed — force a rebuild
+  state.scratch = null; // word counts may have changed — force scratch buffers to resize
 }
 
 // ── Public: Animate one active line ────────────────────────────────────────
@@ -480,35 +520,44 @@ export function animateWobbleLine(
     charInWordMap,
     wordLenMap,
     hyphenGroupData,
+    originalWordCount,
   } = pc;
 
-  const wordFactors = computeWordFactors(effectiveWords, smoothPosition);
-  const wordWobbles = computeWordWobbles(
+  const scratch = ensureWobbleScratch(
+    state,
+    effectiveWords.length,
+    originalWordCount,
+  );
+  fillWordFactors(effectiveWords, smoothPosition, scratch.sungFactor, scratch.isWordSung);
+  fillWordWobbles(
     effectiveWords,
     effectiveToOriginalIdx,
     smoothPosition,
+    scratch.origWobble,
+    scratch.wordWobble,
   );
 
   // Row assignment + cached widths (still used for indexing the per-row push
   // arrays below and avoiding repeated offsetWidth reads).
   const { rowOf, rowCount, charWidths } = ensureRowCache(state, chars, containerWidth);
   // Find which effective word is actually being sung right now, and which
-  // visual rows it occupies. The wobble window extends forward only to words
-  // that sit on the same visual row(s) as the active word — no fixed word
-  // count. This prevents bleed across line-wrap boundaries.
+  // visual row it occupies. The wobble window extends forward only to words
+  // that sit on that same visual row — no fixed word count. This prevents
+  // bleed across line-wrap boundaries.
   let activeWordIdx = -1;
-  for (let wi = 0; wi < wordFactors.length; wi++) {
-    const { sungFactor, isWordSung } = wordFactors[wi];
-    if (!isWordSung && sungFactor > 0) {
+  for (let wi = 0; wi < effectiveWords.length; wi++) {
+    if (!scratch.isWordSung[wi] && scratch.sungFactor[wi] > 0) {
       activeWordIdx = wi;
       break;
     }
   }
-  const activeRows = new Set<number>();
+
+  let activeRow = -1;
   if (activeWordIdx !== -1) {
     for (let i = 0; i < chars.length; i++) {
       if (wordIdxMap[chars[i].charIndex] === activeWordIdx) {
-        activeRows.add(rowOf[i]);
+        activeRow = rowOf[i];
+        break;
       }
     }
   }
@@ -536,78 +585,60 @@ export function animateWobbleLine(
     }
   }
 
-  // ── Pass 1: alignment (X-only, decay=2.5 freq=10.0) ──
-  const lineTotalPush = new Float64Array(rowCount);
-  const scaleXPass1 = new Float64Array(chars.length);
 
-  for (let i = 0; i < chars.length; i++) {
-    const ci = chars[i].charIndex;
-    const wi = wordIdxMap[ci];
-    if (wi === -1) {
-      scaleXPass1[i] = 1;
-      continue;
-    }
-
-    const row = rowOf[i];
-    const wordDistance = activeWordIdx !== -1 ? wi - activeWordIdx : null;
-    const isInWobbleWindowPass1 =
-      wordDistance !== null &&
-      wordDistance >= 0 &&
-      wi <= lastWordOnActiveRow &&
-      activeRows.has(row);
-
-    // Bottom row freeze: skip alignment pass entirely for frozen chars.
-    const isFrozenBottomRowPass1 =
-      row === bottomRow &&
-      firstWordOnBottomRow !== -1 &&
-      activeWordIdx !== -1 &&
-      firstWordOnBottomRow > activeWordIdx;
-
-    if (!isInWobbleWindowPass1 || isFrozenBottomRowPass1) {
-      scaleXPass1[i] = 1;
-      continue;
-    }
-
-    const origWi = effectiveToOriginalIdx[wi];
-    const wobble = wordWobbles[origWi] || 0;
-    const { sungFactor, word: wordItem, isWordSung } = wordFactors[wi];
-    const group = hyphenGroupData.get(wi);
-    const crescendoX = group
-      ? computeCrescendo(group, sungFactor, smoothPosition, 2.5, 10.0)
-      : 0;
-    const charLp = computeCharLp(
-      smoothPosition,
-      wordItem,
-      charInWordMap[ci],
-      wordLenMap[ci],
-    );
-    const nudge = computeNudge(charLp, wordItem, sungFactor, isWordSung);
-    const emphMul = wordItem?.emphasized ? 2 : 1;
-    const emphOffset = computeEmphOffset(
-      wordItem,
-      sungFactor,
-      isWordSung,
-      smoothPosition,
-    );
-    const scaleX =
-      1 + wobble * 0.0375 * emphMul + crescendoX + nudge * 0.3 + emphOffset;
-    scaleXPass1[i] = scaleX;
-    lineTotalPush[row] += charWidths[i] * (scaleX - 1) * 1.2;
-  }
-
-  // ── Pass 2: draw (X+Y, decay=3.5 freq=5.0) ──
   const lineCurrentPush = new Float64Array(rowCount);
 
   for (let i = 0; i < chars.length; i++) {
     const ci = chars[i].charIndex;
     const wi = wordIdxMap[ci];
-    const origWi = wi !== -1 ? effectiveToOriginalIdx[wi] : -1;
-    const wobble = origWi !== -1 ? wordWobbles[origWi] : 0;
-    const { sungFactor, word: wordItem, isWordSung } =
-      wi !== -1
-        ? wordFactors[wi]
-        : { sungFactor: 0, word: null as EffectiveWord | null, isWordSung: false };
-    const group = wi !== -1 ? hyphenGroupData.get(wi) : null;
+    const row = rowOf[i];
+
+
+    const wordDistance = activeWordIdx !== -1 && wi !== -1 ? wi - activeWordIdx : null;
+    const isInWobbleWindow =
+      wordDistance !== null &&
+      wordDistance >= 0 &&
+      wi <= lastWordOnActiveRow &&
+      row === activeRow;
+
+    // Bottom row freeze: characters on the bottom row stay completely
+    // untouched until the first word on that row begins singing.
+    const isFrozenBottomRow =
+      row === bottomRow &&
+      firstWordOnBottomRow !== -1 &&
+      activeWordIdx !== -1 &&
+      firstWordOnBottomRow > activeWordIdx;
+
+    const wobble = wi !== -1 ? scratch.wordWobble[wi] : 0;
+
+    // ── Frozen bottom row: hard reset (no animation bleeds onto the
+    //     invisible last line while earlier words are still active). ──
+    if (isFrozenBottomRow) {
+      setCachedInline(chars[i].span, "scale", "1");
+      setCachedInline(chars[i].span, "transform", "");
+      continue;
+    }
+
+    if (!isInWobbleWindow && wobble === 0) {
+      const tx = lineCurrentPush[row];
+      if (tx !== 0) {
+        setCachedInline(chars[i].span, "scale", "1");
+        setCachedInline(chars[i].span, "transform",
+          `translate3d(${tx.toFixed(2)}px, 0, 0) scaleY(1)`);
+      } else {
+        setCachedInline(chars[i].span, "scale", "1");
+        setCachedInline(chars[i].span, "transform", "");
+      }
+      continue;
+    }
+
+    // Only characters that reach here (the active wobble window, plus any
+    // still mid-decay after leaving it) pay for the spring math below.
+    const sungFactor = wi !== -1 ? scratch.sungFactor[wi] : 0;
+    const isWordSung = wi !== -1 ? scratch.isWordSung[wi] === 1 : false;
+    const wordItem = wi !== -1 ? effectiveWords[wi] : null;
+    const group = wi !== -1 ? hyphenGroupData.get(wi) : undefined;
+
     const charLp = computeCharLp(
       smoothPosition,
       wordItem,
@@ -625,33 +656,6 @@ export function animateWobbleLine(
         3.5,
         5.0,
       );
-    }
-
-    // ── Gate: is this character in the wobble window? ──
-    const row = rowOf[i];
-    const wordDistance = activeWordIdx !== -1 && wi !== -1 ? wi - activeWordIdx : null;
-    const isInWobbleWindow =
-      wordDistance !== null &&
-      wordDistance >= 0 &&
-      wi <= lastWordOnActiveRow &&
-      activeRows.has(row);
-
-    // Bottom row freeze: characters on the bottom row stay completely
-    // untouched until the first word on that row begins singing.
-    const isFrozenBottomRow =
-      row === bottomRow &&
-      firstWordOnBottomRow !== -1 &&
-      activeWordIdx !== -1 &&
-      firstWordOnBottomRow > activeWordIdx;
-
-    // Reset chars outside the wobble window or on a frozen bottom row to
-    // identity — but only if the word's own wobble has fully decayed.
-    // If wobble > 0 the word is still in its natural 750ms decay and will
-    // smoothly reach scale 1 on its own; hard-resetting mid-decay snaps.
-    if ((!isInWobbleWindow && wobble === 0) || isFrozenBottomRow) {
-      setCachedInline(chars[i].span, "scale", "1");
-      setCachedInline(chars[i].span, "transform", "");
-      continue;
     }
 
     const emphMul = wordItem?.emphasized ? 2 : 1;
