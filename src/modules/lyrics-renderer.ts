@@ -1,5 +1,6 @@
 import type { TransformedLyrics } from "../lyrics/types";
 import { get } from "../stores/settings";
+import { getRomanize } from "../stores/romanize";
 import {
   setCachedStyle,
   setCachedInline,
@@ -322,6 +323,25 @@ export default class LyricsRenderer {
   }
 
   private buildLines(): void {
+    const showRomanized = getRomanize();
+    // Every syllable is split into per-letter spans unconditionally (not
+    // gated on the current animationStyle). buildLines() only runs once,
+    // at construction, so baking the DOM structure to whatever mode was
+    // active *at that moment* meant switching modes live (without a full
+    // remount) left the DOM out of sync with the per-frame animation logic
+    // (which reads the live setting every frame in render-loop.ts). That
+    // desync is what caused wobble's char-progress to be all-or-nothing
+    // after a mode switch, and — the other direction — bounce mode giving
+    // every syllable its own per-letter spring bounce/glow instead of only
+    // emphasized ones.
+    //
+    // Splitting is now permanent and mode-independent; only the *spring*
+    // (scale/glow bounce) is exclusive to emphasized syllables — see the
+    // `emphasized` check below, which leaves `springs: null` on the letters
+    // of non-emphasized syllables. Every animation site in this file already
+    // gates its per-letter spring application on `ltr.springs` being
+    // truthy, so non-emphasized syllables naturally get no bounce, just the
+    // (harmless, desired) per-letter --char-progress sweep.
     if (this.lyrics.type === "Static") {
       for (const line of this.lyrics.lines) {
         const group = document.createElement("div");
@@ -330,7 +350,7 @@ export default class LyricsRenderer {
         vocals.className = "Vocals Lead Active";
         const span = document.createElement("span");
         span.className = "Lyric Static";
-        span.textContent = line.text;
+        span.textContent = showRomanized ? (line.romanizedText ?? line.text) : line.text;
         vocals.appendChild(span);
         group.appendChild(vocals);
         this.lyricsContainer.appendChild(group);
@@ -438,7 +458,7 @@ export default class LyricsRenderer {
             const sStartTime = s.StartTime ?? startTime;
             const sEndTime = s.EndTime ?? endTime;
             const sDuration = sEndTime - sStartTime;
-            const text = s.Text ?? "";
+            const text = showRomanized ? (s.RomanizedText ?? s.romanizedText ?? s.Text ?? "") : (s.Text ?? "");
             const textLen = text.length;
             const emphasized = isEmphasized(sDuration, textLen);
 
@@ -451,9 +471,9 @@ export default class LyricsRenderer {
             });
 
             const letters: LetterInfo[] = [];
-            const lettersArr = [...text];
 
             if (textLen > 0) {
+              const lettersArr = [...text];
               const letterDuration = sDuration / lettersArr.length;
 
               for (let i = 0; i < lettersArr.length; i++) {
@@ -465,12 +485,15 @@ export default class LyricsRenderer {
                 const letterStart = sStartTime + i * letterDuration;
                 const letterEnd = letterStart + letterDuration;
 
-                const ltrSprings =
-                  emphasized && textLen > 0 ? createLetterSpringSet() : null;
-                if (ltrSprings) {
-                  // Same fix as syllables — seed the DOM with the letter
-                  // spring's resting values so there's nothing to snap from
-                  // the first time this letter actually animates.
+                // Only emphasized syllables get a spring + seeded rest pose.
+                // Non-emphasized letters are left with no inline
+                // scale/transform at all, so they render at a flat 1:1 and
+                // never receive the per-letter bounce/glow spring — only
+                // the containing .Syllable's own spring (whole-word bounce)
+                // and the per-letter --char-progress sweep apply to them.
+                let ltrSprings: ReturnType<typeof createLetterSpringSet> | null = null;
+                if (emphasized) {
+                  ltrSprings = createLetterSpringSet();
                   const restSplines = getActiveSplines();
                   setCachedInline(
                     letterSpan,
@@ -522,7 +545,7 @@ export default class LyricsRenderer {
           vocals.appendChild(wordSpan);
         }
       } else {
-        const text = item.Text ?? "";
+        const text = showRomanized ? (item.RomanizedText ?? item.romanizedText ?? item.Text ?? "") : (item.Text ?? "");
         if (!text) continue;
         const span = document.createElement("span");
         span.className = "Lyric Synced Line";
@@ -592,7 +615,7 @@ export default class LyricsRenderer {
                 syllableData[i].startScale * duration + startTime,
               endTime:
                 syllableData[i].endScale * duration + startTime,
-              hasTrailingSpace: false,
+              hasTrailingSpace: true,
               emphasized: syllableData[i].emphasized,
             });
           } else if (wCurrentWord) {
@@ -607,7 +630,7 @@ export default class LyricsRenderer {
         }
         // Fix trailing spaces: mark last word in each original word group
         if (wWords.length > 0) {
-          wWords[wWords.length - 1].hasTrailingSpace = true;
+          wWords[wWords.length - 1].hasTrailingSpace = false;
         }
         wobbleWords = wWords;
 
@@ -615,9 +638,17 @@ export default class LyricsRenderer {
         const flatChars: WobbleCharEl[] = [];
         let charIdx = 0;
         for (const syl of syllableData) {
-          for (const ltr of syl.letters) {
-            flatChars.push({ span: ltr.span, charIndex: charIdx });
-            charIdx++;
+          if (syl.letters.length > 0) {
+            for (const ltr of syl.letters) {
+              flatChars.push({ span: ltr.span, charIndex: charIdx });
+              charIdx++;
+            }
+          } else {
+            const text = syl.span.textContent ?? "";
+            for (let i = 0; i < text.length; i++) {
+              flatChars.push({ span: syl.span, charIndex: charIdx });
+              charIdx++;
+            }
           }
         }
         wobbleChars = flatChars;

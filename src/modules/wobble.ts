@@ -140,17 +140,28 @@ function ensureRowCache(
   // offsetTop can fail when the offsetParent is far up the DOM tree
   // (e.g. inside a scroll container with padding), reporting all chars
   // as the same row even when they visually wrap.
-  for (let i = 0; i < chars.length; i++) {
+  // Detect runs of consecutive indices sharing the same span (non-emphasized
+  // syllables push one span per character), measure once, divide evenly.
+  let i = 0;
+  while (i < chars.length) {
     const el = chars[i].span;
+    let runEnd = i;
+    while (runEnd + 1 < chars.length && chars[runEnd + 1].span === el) {
+      runEnd++;
+    }
+    const runLen = runEnd - i + 1;
     const rect = el.getBoundingClientRect();
-    charWidths[i] = rect.width;
+    const perCharWidth = rect.width / runLen;
     const top = rect.top;
-    // 2px tolerance absorbs sub-pixel jitter within the same row.
     if (rowTop === null || Math.abs(top - rowTop) > 2) {
       rowIdx++;
       rowTop = top;
     }
-    rowOf[i] = rowIdx;
+    for (let j = i; j <= runEnd; j++) {
+      charWidths[j] = perCharWidth;
+      rowOf[j] = rowIdx;
+    }
+    i = runEnd + 1;
   }
 
   const cache: RowCache = { rowOf, rowCount: rowIdx + 1, charWidths, charCount: chars.length, _containerWidth: containerWidth ?? -1 };

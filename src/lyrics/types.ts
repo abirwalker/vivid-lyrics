@@ -43,6 +43,6 @@ export type Lyrics = StaticLyrics | LineLyrics | SyllableLyrics;
 export type TransformedLyrics = {
   naturalAlignment: "Left" | "Right";
   language: string;
-  romanizedLanguage?: "Chinese" | "Japanese" | "Korean";
+  romanizedLanguage?: string;
   songWriters?: string[];
 } & Lyrics;

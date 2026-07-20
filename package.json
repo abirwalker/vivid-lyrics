@@ -4,6 +4,7 @@
   "version": "0.1.0",
   "description": "Making lyrics fun again",
   "scripts": {
+    "postinstall": "node scripts/patch-kuromoji.js",
     "sc": "spicetify-creator",
     "dev": "spicetify-creator dev",
     "build": "spicetify-creator build",
@@ -18,9 +19,13 @@
     "cubic-spline": "^3.0.3",
     "d3-ease": "^3.0.1",
     "kuroshiro": "^1.2.0",
+    "kuroshiro-analyzer-kuromoji": "^1.1.0",
+    "path-browserify": "^1.0.1",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
-    "simplebar": "^6.3.3"
+    "simplebar": "^6.3.3",
+    "transliteration": "^2.6.1",
+    "wanakana": "^5.3.1"
   },
   "devDependencies": {
     "@types/bun": "latest",

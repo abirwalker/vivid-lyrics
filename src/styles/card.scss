@@ -6,10 +6,6 @@
     flex-direction: column;
     min-height: 57px;
     max-height: var(--vl-card-height, 340px);
-
-    &.vl-card-expanded {
-        height: var(--vl-card-height, 340px);
-    }
     background-color: var(
         --background-tinted-base,
         rgba(0, 0, 0, 0.4)
@@ -83,8 +79,8 @@
             svg {
                 fill: currentColor;
                 display: block;
-                width: 18px;
-                height: 18px;
+                width: 14px;
+                height: 14px;
             }
         }
     }
@@ -92,6 +88,11 @@
     .expand-btn {
         padding: 0 7px;
         justify-content: flex-start;
+
+        .icon svg {
+            width: 18px;
+            height: 18px;
+        }
 
         .btn-text {
             font-size: 12px;
@@ -186,15 +187,10 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        flex: 1 1 auto;
+        height: 80px;
 
-        .VL-NoLyrics {
+        .VL-StatusText {
             margin: 0;
-            font-size: max(18px, calc(14px * var(--vl-font-size, 1)));
-            font-weight: inherit;
-            opacity: 0.5;
-            text-align: center;
-            padding: 0 16px;
         }
     }
 

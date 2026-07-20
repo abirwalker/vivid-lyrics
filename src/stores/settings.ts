@@ -9,6 +9,7 @@ export type Settings = {
   blurEnabled: boolean;
   blurStrength: "light" | "normal" | "heavy";
   romanization: boolean;
+  romanizationPosition: "top" | "bottom" | "replace";
   fontSize: number;
   fontFamily: "default" | "spicy";
   hideNativeLyrics: boolean;
@@ -33,7 +34,8 @@ const defaults: Settings = {
   autoScroll: true,
   blurEnabled: true,
   blurStrength: "normal",
-  romanization: false,
+  romanization: true,
+  romanizationPosition: "replace",
   fontSize: 100,
   fontFamily: "default",
   hideNativeLyrics: true,

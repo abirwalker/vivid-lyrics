@@ -60,8 +60,9 @@
     transition: background 0.15s, color 0.15s, transform 0.15s;
 
     svg {
-        width: 16px;
-        height: 16px;
+        width: 18px;
+        height: 18px;
+        fill: currentColor;
     }
 
     &:hover {

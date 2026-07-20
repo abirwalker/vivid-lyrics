@@ -234,6 +234,21 @@ function buildContent(): HTMLElement {
   });
   (blurToggle as any)._blurStrengthRow = blurStrengthRow;
 
+  const romanPositionRow = makeRow(
+    "Romanized Position",
+    "Where to show romanized text",
+    makeSelect(
+      [
+        { label: "Replace", value: "replace" },
+        { label: "Top", value: "top" },
+        { label: "Bottom", value: "bottom" },
+      ],
+      s.romanizationPosition,
+      (v) => set("romanizationPosition", v as Settings["romanizationPosition"]),
+    ),
+  );
+  romanPositionRow.style.display = s.romanization ? "" : "none";
+
   const sections: [string, { label: string; desc: string; control: HTMLElement; after?: HTMLElement; after2?: HTMLElement }[]][] = [
     ["Appearance", [
       {
@@ -396,6 +411,17 @@ function buildContent(): HTMLElement {
         control: makeToggle(s.wordSeekEnabled, (v) => set("wordSeekEnabled", v)),
       },
     ]],
+    ["Romanization", [
+      {
+        label: "Romanization",
+        desc: "Show romanized text for non-Latin scripts",
+        control: makeToggle(s.romanization, (v) => {
+          set("romanization", v);
+          romanPositionRow.style.display = v ? "" : "none";
+        }),
+        after: romanPositionRow,
+      },
+    ]],
     ["Coming Soon", [
       {
         label: "Background Mode",
@@ -405,11 +431,6 @@ function buildContent(): HTMLElement {
       {
         label: "Spotlight Words",
         desc: "Random words get highlighted",
-        control: makeSoon(),
-      },
-      {
-        label: "Romanization",
-        desc: "Show romanized text",
         control: makeSoon(),
       },
     ]],

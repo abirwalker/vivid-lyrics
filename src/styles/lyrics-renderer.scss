@@ -205,6 +205,10 @@ html.vl-centered-text .VividLyrics-FullscreenContent .VL-FS-Line,
             rgb(255 255 255 / var(--text-shadow-opacity, 0%));
 }
 
+.Syllable + .Syllable {
+    margin-left: -0.02em;
+}
+
 .Letter {
     display: inline-block;
     // Grow from the left so scaling words push successors instead of
