@@ -209,6 +209,22 @@ html.vl-centered-text .VividLyrics-FullscreenContent .VL-FS-Line,
     margin-left: -0.02em;
 }
 
+.Syllable {
+    transform-origin: center center;
+}
+
+.Syllable.PartOfWord {
+    transform-origin: right center;
+}
+
+.Syllable.PartOfWord + .Syllable.PartOfWord {
+    transform-origin: center center;
+}
+
+.Syllable.PartOfWord + .Syllable {
+    transform-origin: left center;
+}
+
 .Letter {
     display: inline-block;
     // Grow from the left so scaling words push successors instead of

@@ -37,6 +37,7 @@ let renderer: LyricsRenderer | null = null;
 let currentLyrics: TransformedLyrics | null = null;
 let currentUri: string | null = null;
 let romanizeUnsub: (() => void) | null = null;
+let swapTimer: number | undefined;
 
 function getVisible(): boolean {
   return storage.get("CardLyricsVisible") !== "false";
@@ -115,7 +116,31 @@ function destroyRenderer(): void {
 function updateRomanizeBtn(): void {
   if (!romanizeBtn || !headerActions) return;
   const show = getRomanize();
-  romanizeBtn.innerHTML = `<span class="icon">${show ? RomanizeOffIcon : RomanizeOnIcon}</span><span class="btn-text">${show ? "Show Original" : "Show Romanized"}</span>`;
+
+  const iconEl = romanizeBtn.querySelector<HTMLElement>(".icon");
+  const textEl = romanizeBtn.querySelector<HTMLElement>(".btn-text");
+
+  if (iconEl) {
+    iconEl.innerHTML = show ? RomanizeOffIcon : RomanizeOnIcon;
+  }
+
+  if (textEl) {
+    const newText = show ? "Show Original" : "Show Romanized";
+    if (textEl.textContent !== newText) {
+      clearTimeout(swapTimer);
+      textEl.style.opacity = "0";
+      swapTimer = setTimeout(() => {
+        textEl.textContent = newText;
+        requestAnimationFrame(() => {
+          textEl.style.opacity = "1";
+        });
+        swapTimer = setTimeout(() => {
+          textEl.style.opacity = "";
+        }, 160);
+      }, 150);
+    }
+  }
+
   romanizeBtn.classList.toggle("romanize-active", show);
   const shouldShow = hasRomanizeCapability() && get("romanization");
   if (shouldShow && !romanizeBtn.parentElement) {
@@ -239,11 +264,17 @@ function ensureInDOM(): void {
 
 function onLyricsUpdate(lyrics: TransformedLyrics | null) {
   currentLyrics = lyrics;
-  if (!getVisible()) return;
 
   if (lyrics) {
     const canRomanize = !!(lyrics.romanizedLanguage && lyrics.romanizedLanguage !== "Latin");
     resetRomanize(canRomanize);
+  } else {
+    resetRomanize(false);
+  }
+
+  if (!getVisible()) return;
+
+  if (lyrics) {
     clearBody();
     populateBody(lyrics);
   } else {
@@ -333,6 +364,7 @@ function observeNPV() {
       }
 
       removeCb = () => {
+        clearTimeout(swapTimer);
         Spicetify.Player.removeEventListener("songchange", handler);
         nativeObserver?.disconnect();
         lyricsUnsub?.();

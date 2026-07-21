@@ -463,7 +463,7 @@ export default class LyricsRenderer {
             const emphasized = isEmphasized(sDuration, textLen);
 
             const span = document.createElement("span");
-            span.className = "Syllable";
+            span.className = s.IsPartOfWord ? "Syllable PartOfWord" : "Syllable";
             span.addEventListener("click", (e) => {
               if (!get("wordSeekEnabled")) return;
               e.stopPropagation();
