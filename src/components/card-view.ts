@@ -37,7 +37,7 @@ let renderer: LyricsRenderer | null = null;
 let currentLyrics: TransformedLyrics | null = null;
 let currentUri: string | null = null;
 let romanizeUnsub: (() => void) | null = null;
-let swapTimer: number | undefined;
+let swapTimer: ReturnType<typeof setTimeout> | undefined;
 
 function getVisible(): boolean {
   return storage.get("CardLyricsVisible") !== "false";

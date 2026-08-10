@@ -620,7 +620,17 @@ export function animateWobbleLine(
       activeWordIdx !== -1 &&
       firstWordOnBottomRow > activeWordIdx;
 
-    const wobble = wi !== -1 ? scratch.wordWobble[wi] : 0;
+    let wobble = wi !== -1 ? scratch.wordWobble[wi] : 0;
+
+    // Look-ahead wobble: words in the wobble window that haven't started
+    // yet get a decayed version of the active word's wobble so they don't
+    // appear frozen next to the animating active word.
+    if (wobble === 0 && isInWobbleWindow && activeWordIdx >= 0 && wi > activeWordIdx) {
+      const headWobble = scratch.wordWobble[activeWordIdx];
+      if (headWobble > 0) {
+        wobble = headWobble * Math.pow(0.6, wi - activeWordIdx);
+      }
+    }
 
     // ── Frozen bottom row: hard reset (no animation bleeds onto the
     //     invisible last line while earlier words are still active). ──

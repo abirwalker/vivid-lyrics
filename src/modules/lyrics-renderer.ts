@@ -829,15 +829,15 @@ export default class LyricsRenderer {
 
     this.updateBlur(frame.ctx);
 
-		if (this.scroller) {
-			this.programmaticScroll = true;
-			if (hasActive) {
-				this.scroller.update(deltaTime);
-			} else {
-				this.scroller.snapToTarget();
-			}
-			this.programmaticScroll = false;
-		}
+ 		if (this.scroller) {
+ 			this.programmaticScroll = true;
+ 			if (hasActive) {
+ 				this.scroller.update(deltaTime);
+ 			} else if (!this.autoScrollBlocked) {
+ 				this.scroller.snapToTarget();
+ 			}
+ 			this.programmaticScroll = false;
+ 		}
 
 		if (skipped) {
       this.lyricsEnded = false;
@@ -1614,15 +1614,13 @@ export default class LyricsRenderer {
 		if (activeIdx === this.lastActiveIdx && !instant) return;
 		this.lastActiveIdx = activeIdx;
 
-		if (activeIdx < 0) {
-			if (this.lyricsEnded) {
-				const scrollEl = this.simpleBar!.getScrollElement();
-				this.programmaticScroll = true;
-				scrollEl.scrollTop = scrollEl.scrollHeight;
-				this.programmaticScroll = false;
-			}
-			return;
-		}
+ 		if (activeIdx < 0) {
+ 			const scrollEl = this.simpleBar!.getScrollElement();
+ 			this.programmaticScroll = true;
+ 			scrollEl.scrollTop = this.lyricsEnded ? scrollEl.scrollHeight : 0;
+ 			this.programmaticScroll = false;
+ 			return;
+ 		}
 
 		const activeLine = this.lines[activeIdx];
 

@@ -1,5 +1,114 @@
 import type { TransformedLyrics } from "./types";
-import { romanizeJP, tokenizeAndRomanizeFullLine } from "../utils/romanize";
+import { romanizeJP } from "../utils/romanize";
+import {
+  kanaToRomaji,
+  tokenizeAndReadFullLine,
+  type LineCharReading,
+  type LineReading,
+  type TokenReading,
+} from "../utils/romanize-jp";
+
+// Lexical compounds that tokenizers incorrectly split were previously handled
+// here (COMPOUND_WORDS). Removed — relying on raw tokenizer output instead.
+
+function shouldAttach(prev: TokenReading, curr: TokenReading): boolean {
+  // POS-based rules.
+  // 助動詞 (auxiliary verbs like た/ない/れる) attach to content words, but NOT
+  // to 助詞/形状詞 — so のように keeps spaces ("no you ni") while 見つけた stays
+  // joined ("mitsuketa").
+  const AUX_PREV = new Set(["動詞", "形容詞", "助動詞"]);
+  if (curr.pos === "助動詞" && AUX_PREV.has(prev.pos)) return true;
+  if (curr.pos === "接尾辞") return true;
+  if (curr.pos_detail_1 === "接尾") return true;
+  if (curr.pos === "動詞" && curr.pos_detail_1 === "非自立") return true;
+  // 接頭辞 (全/未/超/ご...) never stands alone: 全生命 → "zenseimei".
+  if (prev.pos === "接頭辞") return true;
+  // なく/たく + なる: 見れなくなった → "mirenakunatta" (but 届いたり stays separate after なく).
+  if (curr.pos === "動詞" && (prev.text === "なく" || prev.text === "たく") && curr.text.startsWith("な")) return true;
+
+  // Common helper / inflection forms
+  // て/で: only the te-form で (接続助詞) attaches — the particle で
+  // (格助詞: 二人で/自転車で) keeps its space ("futari de").
+  if (curr.text === "て" || (curr.text === "で" && curr.pos_detail_1 === "接続助詞")) return true;
+  if (curr.text === "ば") return true;
+  // いる/居る as 補助動詞 (non-自立可能) only after the te-form: 隠れている →
+  // "kakureteiru", but 僕がいる → "boku ga iru".
+  if ((curr.text === "いる" || curr.text === "居る") && prev.text === "て") return true;
+  if (curr.text === "ない" && AUX_PREV.has(prev.pos)) return true;
+  if (["れる", "られる", "せる", "させる"].includes(curr.text) && AUX_PREV.has(prev.pos)) return true;
+  // た/だ attach to verbs/adjectives, but copula だ after a noun stays separate
+  // ("genki da").
+  if (["た", "だ"].includes(curr.text) && AUX_PREV.has(prev.pos)) return true;
+  // か (副助詞) after an indefinite pronoun: いつか/何か/誰か → "itsuka".
+  if (curr.pos === "助詞" && curr.pos_detail_1 === "副助詞" && curr.text === "か" && prev.pos === "代名詞") return true;
+  // たり after a verb: 届いたり → "todoitari".
+  if (curr.text === "たり" && (prev.pos === "動詞" || prev.pos === "助動詞")) return true;
+  // きり (副助詞, "only") after a noun: 一人きり → "hitorikiri".
+  if (curr.text === "きり" && prev.pos === "名詞") return true;
+
+  return false;
+}
+
+// ---------------------------------------------------------------------------
+// Kana → per-syllable romaji assembly
+// ---------------------------------------------------------------------------
+
+const NBSP = "\u00A0";
+
+/**
+ * Build the kana segment for a syllable's character range [start, end).
+ * Token boundaries inside the range become NBSP (or nothing when the next
+ * token should attach, e.g. て/ない/れる).
+ */
+export function buildSyllableKana(
+  chars: LineCharReading[],
+  tokens: TokenReading[],
+  start: number,
+  end: number,
+): string {
+  let seg = "";
+  for (let i = start; i < end; i++) {
+    const c = chars[i];
+    if (!c) break;
+    if (i > 0) {
+      const prevC = chars[i - 1];
+      if (c.tokenIndex !== prevC.tokenIndex) {
+        const prevTok = tokens[prevC.tokenIndex];
+        const currTok = tokens[c.tokenIndex];
+        if (prevTok && currTok && !shouldAttach(prevTok, currTok)) seg += NBSP;
+      }
+    }
+    seg += c.kana;
+  }
+  return seg;
+}
+
+/** Whole-line romaji with token-boundary spaces (particles already fixed). */
+async function romanizeLineSpaced(text: string): Promise<string> {
+  const reading = await tokenizeAndReadFullLine(text);
+  if (!reading) return romanizeJP(text);
+  let seg = "";
+  for (let i = 0; i < reading.chars.length; i++) {
+    const c = reading.chars[i];
+    if (i > 0) {
+      const prevC = reading.chars[i - 1];
+      if (c.tokenIndex !== prevC.tokenIndex) {
+        const prevTok = reading.tokens[prevC.tokenIndex];
+        const currTok = reading.tokens[c.tokenIndex];
+        if (!shouldAttach(prevTok, currTok)) seg += " ";
+      }
+    }
+    seg += c.kana;
+  }
+  const romaji = await kanaToRomaji(seg);
+  return romaji || seg;
+}
+
+function syllableRomaji(reading: LineReading, start: number, end: number): Promise<string> {
+  const seg = buildSyllableKana(reading.chars, reading.tokens, start, end);
+  if (!seg) return Promise.resolve("");
+  return kanaToRomaji(seg).then((romaji) => romaji || (seg === "っ" ? "tsu" : seg));
+}
 
 const RTL_LANGS = ["ara", "ar", "heb", "he", "fas", "fa", "urd", "ur"];
 
@@ -133,18 +242,34 @@ export function adaptLyrics(response: any): TransformedLyrics {
   throw new Error(`Unknown lyrics type: ${response.Type}`);
 }
 
+function dumpRomanizedLyrics(lines: string[]): void {
+  if (!lines.length) return;
+  const header = "[VividLyrics][romanized-dump] ===== FULL ROMANIZED LYRICS =====";
+  const body = lines.join("\n");
+  const footer = "════════════════════════════════════════════════";
+  console.log(`%c${header}\n${body}\n${footer}`, "color: #1db954; font-weight: bold");
+}
+
 export async function fillRomanizedText(lyrics: TransformedLyrics): Promise<void> {
   if (lyrics.romanizedLanguage !== "Japanese") return;
 
   const t0 = performance.now();
+  const romanizedDump: string[] = [];
+  let fromApi = 0;
+  let fromLindera = 0;
 
   if (lyrics.type === "Static") {
     for (const line of lyrics.lines) {
       if (!line.romanizedText && line.text) {
-        line.romanizedText = await romanizeJP(line.text);
+        line.romanizedText = await romanizeLineSpaced(line.text);
+        fromLindera++;
+      } else if (line.romanizedText) {
+        fromApi++;
       }
+      if (line.romanizedText) romanizedDump.push(line.romanizedText);
     }
-    console.log(`[VividLyrics] fillRomanizedText: ${lyrics.lines.length} static lines in ${Math.round(performance.now() - t0)}ms`);
+    console.log(`[VividLyrics] fillRomanizedText: ${lyrics.lines.length} static lines — ${fromApi} from API, ${fromLindera} via Lindera (${Math.round(performance.now() - t0)}ms)`);
+    dumpRomanizedLyrics(romanizedDump);
     return;
   }
 
@@ -161,52 +286,35 @@ export async function fillRomanizedText(lyrics: TransformedLyrics): Promise<void
       if (!allExist) {
         const fullText = syllables.map((s: any) => s.text ?? s.Text ?? "").join("");
         if (fullText) {
-          const { tokenReadings } = await tokenizeAndRomanizeFullLine(fullText);
+          const reading = await tokenizeAndReadFullLine(fullText);
 
           let charOffset = 0;
-          const charToRomaji: { start: number; end: number; romaji: string }[] = [];
-          for (const tr of tokenReadings) {
-            const surfaceLen = [...tr.text].length;
-            charToRomaji.push({ start: charOffset, end: charOffset + surfaceLen, romaji: tr.romaji });
-            charOffset += surfaceLen;
-          }
-
-          let syllableOffset = 0;
-          let lastTokenStart = -1;
-          for (const s of syllables) {
+          for (let sIdx = 0; sIdx < syllables.length; sIdx++) {
+            const s = syllables[sIdx];
             const sText = s.text ?? s.Text ?? "";
             const sLen = [...sText].length;
-            if (sLen === 0) { syllableOffset += sLen; continue; }
+            if (sLen === 0) { charOffset += sLen; continue; }
 
             let romaji = "";
-            for (const range of charToRomaji) {
-              if (range.start < syllableOffset + sLen && range.end > syllableOffset) {
-                const tokenLen = range.end - range.start;
-                const overlapStart = Math.max(range.start, syllableOffset) - range.start;
-                const overlapEnd = Math.min(range.end, syllableOffset + sLen) - range.start;
-                const romajiChars = [...range.romaji];
-                const rStart = Math.round((overlapStart / tokenLen) * romajiChars.length);
-                const rEnd = Math.round((overlapEnd / tokenLen) * romajiChars.length);
-                const chunk = romajiChars.slice(rStart, rEnd).join("");
-                if (range.start !== lastTokenStart && range.start > 0 && chunk) {
-                  romaji += " " + chunk;
-                } else {
-                  romaji += chunk;
-                }
-                if (chunk) lastTokenStart = range.start;
-              }
+            if (reading) {
+              romaji = await syllableRomaji(reading, charOffset, charOffset + sLen);
+            } else {
+              // Tokenizer unavailable — per-syllable romanizeJP fallback
+              romaji = await romanizeJP(sText);
             }
 
             if (romaji) {
               s.romanizedText = romaji;
               s.RomanizedText = romaji;
               romanized++;
+              fromLindera++;
             }
-            syllableOffset += sLen;
+            charOffset += sLen;
           }
         }
       } else {
         romanized += syllables.length;
+        fromApi += syllables.length;
       }
       continue;
     }
@@ -215,11 +323,31 @@ export async function fillRomanizedText(lyrics: TransformedLyrics): Promise<void
     const text = item.text ?? item.Text ?? "";
     const existing = item.romanizedText ?? item.RomanizedText;
     if (!existing && text) {
-      const romaji = await romanizeJP(text);
-      item.romanizedText = romaji;
-      item.RomanizedText = romaji;
+      item.romanizedText = await romanizeLineSpaced(text);
+      item.RomanizedText = item.romanizedText;
       romanized++;
+      fromLindera++;
+    } else if (existing) {
+      fromApi++;
     }
   }
-  console.log(`[VividLyrics] fillRomanizedText: ${content.length} items, ${romanized} romanized in ${Math.round(performance.now() - t0)}ms`);
+  console.log(`[VividLyrics] fillRomanizedText: ${content.length} items — ${fromApi} from API, ${fromLindera} via Lindera in ${Math.round(performance.now() - t0)}ms`);
+
+  // Build romanized dump for debugging / comparison
+  for (const item of content) {
+    if (item.type === "Interlude" || item.Type === "Interlude") { romanizedDump.push(""); continue; }
+
+    const syllables = item.Lead?.Syllables ?? item.lead?.syllables ?? [];
+    if (syllables.length > 0) {
+      // Regenerate the whole line with proper token-boundary spacing. The
+      // per-syllable pieces can't do this: a boundary falling between two
+      // syllables would lose its NBSP in the concatenation.
+      const fullText = syllables.map((s: any) => s.text ?? s.Text ?? "").join("");
+      romanizedDump.push(fullText ? await romanizeLineSpaced(fullText) : "");
+    } else {
+      romanizedDump.push(item.romanizedText ?? item.RomanizedText ?? "");
+    }
+  }
+
+  dumpRomanizedLyrics(romanizedDump);
 }

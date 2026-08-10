@@ -38,14 +38,20 @@ export async function fetchLyrics(uri: string): Promise<TransformedLyrics | null
       { "SpicyLyrics-WebAuth": `Bearer ${accessToken}` }
     );
 
-    const result = results.get("0");
-    if (!result || result.httpStatus === 404) {
-      setLyricsCacheNegative(trackId);
-      return null;
-    }
-    if (result.httpStatus !== 200) return null;
+     const result = results.get("0");
 
-    const lyrics = adaptLyrics(result.data);
+     console.log("[VividLyrics] ===== RAW API RESPONSE =====");
+     console.log("[VividLyrics] httpStatus:", result?.httpStatus);
+     console.log("[VividLyrics] raw data:", JSON.stringify(result?.data, null, 2));
+     console.log("[VividLyrics] ============================");
+
+     if (!result || result.httpStatus === 404) {
+       setLyricsCacheNegative(trackId);
+       return null;
+     }
+     if (result.httpStatus !== 200) return null;
+
+     const lyrics = adaptLyrics(result.data);
     setLyricsCache(trackId, lyrics);
     return lyrics;
   } catch (err) {
