@@ -2,10 +2,16 @@
 
 #VividLyrics-Card {
     container-type: inline-size;
+    --vl-default-font-size: clamp(1.85rem, 7cqw, 3.5rem);
     display: flex;
     flex-direction: column;
     min-height: 57px;
     max-height: var(--vl-card-height, 340px);
+    box-sizing: border-box;
+
+    &.vl-card-no-lyrics {
+        height: var(--vl-card-height, 340px);
+    }
     background-color: var(
         --background-tinted-base,
         rgba(0, 0, 0, 0.4)
@@ -223,9 +229,24 @@
 
     #VividLyrics-NoLyrics {
         display: flex;
+        flex: 1 1 auto;
+        min-height: 0;
+        height: auto;
+        min-width: 0;
+        box-sizing: border-box;
         align-items: center;
         justify-content: center;
-        height: 80px;
+        overflow: hidden;
+
+        .VL-NoLyrics {
+            max-width: 100%;
+            box-sizing: border-box;
+            padding: 16px;
+            font-size: calc(var(--vl-default-font-size) * var(--vl-font-size, 1));
+            line-height: 1.1818181818;
+            overflow-wrap: anywhere;
+            text-align: center;
+        }
 
         .VL-StatusText {
             margin: 0;

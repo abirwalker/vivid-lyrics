@@ -1,4 +1,5 @@
 import storage from "../utils/storage";
+import { on, off, emit } from "../utils/events";
 
 export type Settings = {
   glowIntensity: number;
@@ -54,6 +55,15 @@ const defaults: Settings = {
 
 let current: Settings = { ...defaults };
 
+export type SettingsChange = {
+  key: keyof Settings | null;
+};
+
+export function onSettingsChange(cb: (change: SettingsChange) => void): () => void {
+  const id = on("settings:change", cb);
+  return () => off(id);
+}
+
 function load(): void {
   try {
     const raw = storage.get("settings");
@@ -76,8 +86,10 @@ export function get<K extends keyof Settings>(key: K): Settings[K] {
 }
 
 export function set<K extends keyof Settings>(key: K, value: Settings[K]): void {
+  if (current[key] === value) return;
   current[key] = value;
   save();
+  emit("settings:change", { key });
   if (process.env.NODE_ENV === "development") {
     devNotify(key, value);
   }
@@ -139,6 +151,7 @@ function devNotify(key: string, value: unknown): void {
 export function resetSettings(): void {
   current = { ...defaults };
   save();
+  emit("settings:change", { key: null });
 }
 
 load();

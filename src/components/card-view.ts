@@ -1,6 +1,6 @@
 import type { TransformedLyrics } from "../lyrics/types";
-import { loadLyrics, onLyricsChange } from "../stores/lyrics";
-import { get } from "../stores/settings";
+import { loadLyrics, onLyricsChange, isLyricsLoading } from "../stores/lyrics";
+import { get, onSettingsChange } from "../stores/settings";
 import storage from "../utils/storage";
 import { getNoLyricsMessage, resetNoLyricsMessage } from "../utils/no-lyrics-messages";
 import LyricsRenderer from "../modules/lyrics-renderer";
@@ -35,7 +35,6 @@ let body: HTMLDivElement | null = null;
 let headerActions: HTMLDivElement | null = null;
 let renderer: LyricsRenderer | null = null;
 let currentLyrics: TransformedLyrics | null = null;
-let currentUri: string | null = null;
 let romanizeUnsub: (() => void) | null = null;
 let swapTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -152,6 +151,7 @@ function updateRomanizeBtn(): void {
 
 function clearBody(): void {
   if (!body) return;
+  card?.classList.remove("vl-card-no-lyrics");
   destroyRenderer();
   body.innerHTML = "";
 }
@@ -245,6 +245,7 @@ function showNoLyrics(): void {
   updateRomanizeBtn();
   showBtn!.remove();
   clearBody();
+  card!.classList.add("vl-card-no-lyrics");
   const container = document.createElement("div");
   container.id = "VividLyrics-NoLyrics";
   const noLyrics = document.createElement("p");
@@ -268,7 +269,7 @@ function onLyricsUpdate(lyrics: TransformedLyrics | null) {
   if (lyrics) {
     const canRomanize = !!(lyrics.romanizedLanguage && lyrics.romanizedLanguage !== "Latin");
     resetRomanize(canRomanize);
-  } else {
+  } else if (!isLyricsLoading()) {
     resetRomanize(false);
   }
 
@@ -277,7 +278,9 @@ function onLyricsUpdate(lyrics: TransformedLyrics | null) {
   if (lyrics) {
     clearBody();
     populateBody(lyrics);
-  } else {
+  } else if (!isLyricsLoading()) {
+    // A null update during loading only means the previous track was cleared.
+    // The song-change path has already installed the loading skeleton.
     showNoLyrics();
   }
 }
@@ -286,7 +289,6 @@ async function onSongChange() {
   const uri = getTrackUri();
   console.log("[VividLyrics] songChange uri:", uri);
   if (!uri) return;
-  currentUri = uri;
   resetNoLyricsMessage();
 
   // Always pre-load lyrics so the store has them ready
@@ -354,6 +356,29 @@ function observeNPV() {
           populateBody(currentLyrics);
         }
       });
+      const settingsUnsub = onSettingsChange(({ key }) => {
+        if (!getVisible()) return;
+        if (
+          key !== null &&
+          key !== "fontSize" &&
+          key !== "fontFamily" &&
+          key !== "cardHeight" &&
+          key !== "cardScrollMode" &&
+          key !== "centeredTextCard" &&
+          key !== "romanization"
+        ) {
+          return;
+        }
+        ensureCard();
+        card!.style.setProperty("--vl-card-height", `${get("cardHeight")}px`);
+        card!.classList.toggle("vl-card-centered", get("centeredTextCard"));
+        body?.style.setProperty("--vl-font-size", String(get("fontSize") / 100));
+        updateRomanizeBtn();
+        if (currentLyrics) {
+          clearBody();
+          populateBody(currentLyrics);
+        }
+      });
       onSongChange();
 
       if (!getTrackUri()) {
@@ -369,6 +394,7 @@ function observeNPV() {
         nativeObserver?.disconnect();
         lyricsUnsub?.();
         romanizeUnsub?.();
+        settingsUnsub();
         destroyRenderer();
         card?.remove();
         card = null;

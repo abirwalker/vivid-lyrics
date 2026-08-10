@@ -462,6 +462,7 @@ function buildContent(): HTMLElement {
   resetBtn.textContent = "Reset to Defaults";
   resetBtn.addEventListener("click", () => {
     resetSettings();
+    applyStoredFont();
     closeModal();
     openModal();
   });

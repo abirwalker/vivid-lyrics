@@ -1,8 +1,8 @@
 import { setPageMode, getPageMode, onPageModeChange } from "../stores/page";
-import { getLyrics, onLyricsChange } from "../stores/lyrics";
-import { get } from "../stores/settings";
+import { getLyrics, onLyricsChange, isLyricsLoading } from "../stores/lyrics";
+import { get, onSettingsChange } from "../stores/settings";
 import type { TransformedLyrics } from "../lyrics/types";
-import { whyamidoingthis, getNoLyricsMessage } from "../utils/no-lyrics-messages";
+import { getNoLyricsMessage } from "../utils/no-lyrics-messages";
 import LyricsRenderer from "../modules/lyrics-renderer";
 import {
   getRomanize,
@@ -25,7 +25,7 @@ let content: HTMLDivElement | null = null;
 let controlsContainer: HTMLDivElement | null = null;
 let activeRenderer: LyricsRenderer | null = null;
 let isLoading = false;
-let lastUri: string | null = null;
+
 
 function renderLyrics(lyrics: TransformedLyrics | null): void {
   if (!content) return;
@@ -156,9 +156,7 @@ function show(): void {
   portal.style.display = "block";
   document.addEventListener("keydown", onKeyDown);
   document.addEventListener("fullscreenchange", onFullscreenChange);
-  const currentUri = Spicetify.Player.data?.item?.uri ?? null;
-  isLoading = !getLyrics();
-  lastUri = currentUri;
+  isLoading = isLyricsLoading();
   updateControls();
   renderLyrics(getLyrics());
 }
@@ -225,13 +223,7 @@ export function setupFullscreen(): void {
   setupModeReaction();
   onLyricsChange((lyrics) => {
     if (getPageMode() !== "page") {
-      const currentUri = Spicetify.Player.data?.item?.uri ?? null;
-      if (currentUri !== lastUri) {
-        isLoading = true;
-        lastUri = currentUri;
-      } else {
-        isLoading = false;
-      }
+      isLoading = isLyricsLoading();
       if (lyrics) {
         const canRomanize = !!(lyrics.romanizedLanguage && lyrics.romanizedLanguage !== "Latin");
         resetRomanize(canRomanize);
@@ -242,7 +234,24 @@ export function setupFullscreen(): void {
   onRomanizeChange(() => {
     if (getPageMode() !== "page") {
       updateControls();
+      isLoading = isLyricsLoading();
       renderLyrics(getLyrics());
     }
+  });
+  onSettingsChange(({ key }) => {
+    if (getPageMode() === "page") return;
+    if (
+      key !== null &&
+      key !== "fontSize" &&
+      key !== "fontFamily" &&
+      key !== "gradientDirection" &&
+      key !== "controlsPosition" &&
+      key !== "romanization"
+    ) {
+      return;
+    }
+    updateControls();
+    isLoading = isLyricsLoading();
+    renderLyrics(getLyrics());
   });
 }

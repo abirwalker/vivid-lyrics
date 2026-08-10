@@ -1,8 +1,8 @@
 import type { TransformedLyrics } from "../lyrics/types";
-import { loadLyrics, getLyrics, onLyricsChange } from "../stores/lyrics";
+import { loadLyrics, getLyrics, onLyricsChange, isLyricsLoading } from "../stores/lyrics";
 import { setPageMode } from "../stores/page";
-import { get } from "../stores/settings";
-import { whyamidoingthis, getNoLyricsMessage } from "../utils/no-lyrics-messages";
+import { get, onSettingsChange } from "../stores/settings";
+import { getNoLyricsMessage } from "../utils/no-lyrics-messages";
 import { setLyricsVisibility } from "./card-view";
 import LyricsRenderer from "../modules/lyrics-renderer";
 import {
@@ -25,9 +25,10 @@ let pageContainer: HTMLDivElement | null = null;
 let hiddenSiblings: HTMLElement[] = [];
 let isOpen = false;
 let isLoading = false;
-let lastUri: string | null = null;
+
 let lyricsUnsub: (() => void) | null = null;
 let romanizeUnsub: (() => void) | null = null;
+let settingsUnsub: (() => void) | null = null;
 let activeRenderer: LyricsRenderer | null = null;
 let romanizeBtn: HTMLButtonElement | null = null;
 
@@ -181,19 +182,16 @@ function open(): void {
     }
     content.appendChild(skeleton);
     loadLyrics(uri).then((lyrics) => {
-      if (isOpen) renderPage(lyrics);
+      if (isOpen && (Spicetify.Player.data?.item?.uri ?? null) === uri) {
+        isLoading = isLyricsLoading();
+        renderPage(lyrics);
+      }
     });
   }
 
   lyricsUnsub = onLyricsChange((lyrics) => {
     if (isOpen) {
-      const currentUri = Spicetify.Player.data?.item?.uri ?? null;
-      if (currentUri !== lastUri) {
-        isLoading = true;
-        lastUri = currentUri;
-      } else {
-        isLoading = false;
-      }
+      isLoading = isLyricsLoading();
       if (lyrics) {
         const canRomanize = !!(lyrics.romanizedLanguage && lyrics.romanizedLanguage !== "Latin");
         resetRomanize(canRomanize);
@@ -205,8 +203,26 @@ function open(): void {
   romanizeUnsub = onRomanizeChange(() => {
     if (isOpen) {
       updateMainRomanizeBtn();
+      isLoading = isLyricsLoading();
       renderPage(getLyrics());
     }
+  });
+
+  settingsUnsub = onSettingsChange(({ key }) => {
+    if (!isOpen) return;
+    if (
+      key !== null &&
+      key !== "fontSize" &&
+      key !== "fontFamily" &&
+      key !== "gradientDirection" &&
+      key !== "scrollMode" &&
+      key !== "romanization"
+    ) {
+      return;
+    }
+    updateMainRomanizeBtn();
+    isLoading = isLyricsLoading();
+    renderPage(getLyrics());
   });
 }
 
@@ -218,6 +234,8 @@ function closePage(): void {
   lyricsUnsub = null;
   romanizeUnsub?.();
   romanizeUnsub = null;
+  settingsUnsub?.();
+  settingsUnsub = null;
 
   activeRenderer?.destroy();
   activeRenderer = null;
