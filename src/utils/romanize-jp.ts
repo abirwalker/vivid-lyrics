@@ -21,6 +21,22 @@ export type TokenRelationship =
   | "bound-particle"
   | "dependent-verb";
 
+/** Map morphology to the word-boundary convention used by romaji output. */
+export function shouldAttachRomanization(relationship: TokenRelationship): boolean {
+  switch (relationship) {
+    case "prefix":
+    case "suffix":
+    case "inflection":
+    case "connective":
+    case "auxiliary":
+    case "bound-particle":
+      return true;
+    case "dependent-verb":
+    case "independent":
+      return false;
+  }
+}
+
 export type TokenReading = {
   text: string;
   pos?: string;
@@ -240,6 +256,9 @@ export function alignSurfaceToKana(surface: string, kana: string): string[] {
 // ---------------------------------------------------------------------------
 
 const INFLECTABLE_POS = new Set(["動詞", "形容詞", "助動詞"]);
+const OPENING_PUNCTUATION = new Set([
+  "「", "『", "（", "［", "｛", "〈", "《", "〔", "【", "｢", "(", "[", "{", "<",
+]);
 
 /**
  * Describe the morphological relationship at a token boundary. This is kept
@@ -253,6 +272,14 @@ export function classifyTokenRelationship(
   if (!prev) return "independent";
 
   if (prev.pos === "接頭辞") return "prefix";
+
+  // Opening brackets attach to the text that follows them. The relationship
+  // is expressed at the current boundary, so this checks the previous token.
+  if (prev.pos === "補助記号" && OPENING_PUNCTUATION.has(prev.text)) return "prefix";
+
+  // Japanese punctuation should not acquire a space before it: "sore de,".
+  // Opening punctuation is handled above so it also avoids a space after it.
+  if (curr.pos === "補助記号") return "suffix";
   if (curr.pos === "接尾辞" || curr.pos_detail_1 === "接尾") return "suffix";
 
   if (curr.pos === "助動詞" && INFLECTABLE_POS.has(prev.pos ?? "")) {
@@ -315,6 +342,47 @@ export function resolveTokenRelationship(
   curr: TokenReading,
 ): TokenRelationship {
   return curr.relationshipToPrevious ?? classifyTokenRelationship(prev, curr);
+}
+
+/** Build a kana range while preserving token boundaries within a syllable. */
+export function buildKanaWithTokenBoundaries(
+  chars: LineCharReading[],
+  tokens: TokenReading[],
+  start: number,
+  end: number,
+  separator = " ",
+): string {
+  let seg = "";
+  for (let i = start; i < end; i++) {
+    const c = chars[i];
+    if (!c) break;
+    if (i > start) {
+      const prevC = chars[i - 1];
+      if (c.tokenIndex !== prevC.tokenIndex) {
+        const prevTok = tokens[prevC.tokenIndex];
+        const currTok = tokens[c.tokenIndex];
+        if (
+          prevTok &&
+          currTok &&
+          !shouldAttachRomanization(resolveTokenRelationship(prevTok, currTok))
+        ) {
+          seg += separator;
+        }
+      }
+    }
+    seg += c.kana;
+  }
+  return seg;
+}
+
+/** Build kana while inserting spaces at independent token boundaries. */
+export function buildSpacedKana(reading: LineReading): string {
+  return buildKanaWithTokenBoundaries(
+    reading.chars,
+    reading.tokens,
+    0,
+    reading.chars.length,
+  );
 }
 
 // ---------------------------------------------------------------------------

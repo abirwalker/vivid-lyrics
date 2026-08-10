@@ -1,30 +1,13 @@
 import type { TransformedLyrics } from "./types";
 import { romanizeJP } from "../utils/romanize";
 import {
+  buildKanaWithTokenBoundaries,
   kanaToRomaji,
   tokenizeAndReadFullLine,
-  resolveTokenRelationship,
   type LineCharReading,
   type LineReading,
   type TokenReading,
-  type TokenRelationship,
 } from "../utils/romanize-jp";
-
-/** Map morphology to the word-boundary convention used by romaji output. */
-export function shouldAttachRomanization(relationship: TokenRelationship): boolean {
-  switch (relationship) {
-    case "prefix":
-    case "suffix":
-    case "inflection":
-    case "connective":
-    case "auxiliary":
-    case "bound-particle":
-      return true;
-    case "dependent-verb":
-    case "independent":
-      return false;
-  }
-}
 
 // ---------------------------------------------------------------------------
 // Kana → per-syllable romaji assembly
@@ -43,49 +26,7 @@ export function buildSyllableKana(
   start: number,
   end: number,
 ): string {
-  let seg = "";
-  for (let i = start; i < end; i++) {
-    const c = chars[i];
-    if (!c) break;
-    if (i > 0) {
-      const prevC = chars[i - 1];
-      if (c.tokenIndex !== prevC.tokenIndex) {
-        const prevTok = tokens[prevC.tokenIndex];
-        const currTok = tokens[c.tokenIndex];
-        if (
-          prevTok &&
-          currTok &&
-          !shouldAttachRomanization(resolveTokenRelationship(prevTok, currTok))
-        ) {
-          seg += NBSP;
-        }
-      }
-    }
-    seg += c.kana;
-  }
-  return seg;
-}
-
-/** Whole-line romaji with token-boundary spaces (particles already fixed). */
-async function romanizeLineSpaced(text: string): Promise<string> {
-  const reading = await tokenizeAndReadFullLine(text);
-  if (!reading) return romanizeJP(text);
-  let seg = "";
-  for (let i = 0; i < reading.chars.length; i++) {
-    const c = reading.chars[i];
-    if (i > 0) {
-      const prevC = reading.chars[i - 1];
-      if (c.tokenIndex !== prevC.tokenIndex) {
-        const prevTok = reading.tokens[prevC.tokenIndex];
-        const currTok = reading.tokens[c.tokenIndex];
-        const relationship = resolveTokenRelationship(prevTok, currTok);
-        if (!shouldAttachRomanization(relationship)) seg += " ";
-      }
-    }
-    seg += c.kana;
-  }
-  const romaji = await kanaToRomaji(seg);
-  return romaji || seg;
+  return buildKanaWithTokenBoundaries(chars, tokens, start, end, NBSP);
 }
 
 function syllableRomaji(reading: LineReading, start: number, end: number): Promise<string> {
@@ -245,7 +186,7 @@ export async function fillRomanizedText(lyrics: TransformedLyrics): Promise<void
   if (lyrics.type === "Static") {
     for (const line of lyrics.lines) {
       if (!line.romanizedText && line.text) {
-        line.romanizedText = await romanizeLineSpaced(line.text);
+        line.romanizedText = await romanizeJP(line.text);
         fromLindera++;
       } else if (line.romanizedText) {
         fromApi++;
@@ -307,7 +248,7 @@ export async function fillRomanizedText(lyrics: TransformedLyrics): Promise<void
     const text = item.text ?? item.Text ?? "";
     const existing = item.romanizedText ?? item.RomanizedText;
     if (!existing && text) {
-      item.romanizedText = await romanizeLineSpaced(text);
+      item.romanizedText = await romanizeJP(text);
       item.RomanizedText = item.romanizedText;
       romanized++;
       fromLindera++;
@@ -327,7 +268,7 @@ export async function fillRomanizedText(lyrics: TransformedLyrics): Promise<void
       // per-syllable pieces can't do this: a boundary falling between two
       // syllables would lose its NBSP in the concatenation.
       const fullText = syllables.map((s: any) => s.text ?? s.Text ?? "").join("");
-      romanizedDump.push(fullText ? await romanizeLineSpaced(fullText) : "");
+      romanizedDump.push(fullText ? await romanizeJP(fullText) : "");
     } else {
       romanizedDump.push(item.romanizedText ?? item.RomanizedText ?? "");
     }
