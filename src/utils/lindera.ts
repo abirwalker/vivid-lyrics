@@ -68,6 +68,8 @@ export interface LinderaToken {
   reading?: string;
   partOfSpeech: string;
   partOfSpeechSubcategory1: string;
+  /** Dictionary/base spelling for an inflected surface, e.g. い → いる. */
+  orthographicBaseForm?: string;
 }
 
 /**
@@ -89,6 +91,11 @@ export function getPos(token: LinderaToken): string {
 
 export function getPosDetail1(token: LinderaToken): string {
   return token?.partOfSpeechSubcategory1 ?? "";
+}
+
+export function getBaseForm(token: LinderaToken): string {
+  const baseForm = token?.orthographicBaseForm;
+  return !baseForm || baseForm === "*" ? token?.surface ?? "" : baseForm;
 }
 
 export async function ensureLindera(): Promise<any> {

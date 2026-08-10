@@ -1,10 +1,34 @@
-import { ensureLindera, tokenize, getReading, getPos, getPosDetail1 } from "./lindera";
+import {
+  ensureLindera,
+  tokenize,
+  getReading,
+  getPos,
+  getPosDetail1,
+  getBaseForm,
+} from "./lindera";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-export type TokenReading = { text: string; pos?: string; pos_detail_1?: string };
+export type TokenRelationship =
+  | "independent"
+  | "prefix"
+  | "suffix"
+  | "inflection"
+  | "connective"
+  | "auxiliary"
+  | "bound-particle"
+  | "dependent-verb";
+
+export type TokenReading = {
+  text: string;
+  pos?: string;
+  pos_detail_1?: string;
+  base_form?: string;
+  /** Populated by tokenizeAndReadFullLine; optional for manual token fixtures. */
+  relationshipToPrevious?: TokenRelationship;
+};
 
 export interface LineCharReading {
   /** Hiragana reading for this char (identity for non-JP chars) */
@@ -212,6 +236,88 @@ export function alignSurfaceToKana(surface: string, kana: string): string[] {
 }
 
 // ---------------------------------------------------------------------------
+// Token relationships
+// ---------------------------------------------------------------------------
+
+const INFLECTABLE_POS = new Set(["動詞", "形容詞", "助動詞"]);
+
+/**
+ * Describe the morphological relationship at a token boundary. This is kept
+ * separate from presentation policy: a dependent verb is grammatically linked
+ * to the previous token, but romanization may still put a space before it.
+ */
+export function classifyTokenRelationship(
+  prev: TokenReading | undefined,
+  curr: TokenReading,
+): TokenRelationship {
+  if (!prev) return "independent";
+
+  if (prev.pos === "接頭辞") return "prefix";
+  if (curr.pos === "接尾辞" || curr.pos_detail_1 === "接尾") return "suffix";
+
+  if (curr.pos === "助動詞" && INFLECTABLE_POS.has(prev.pos ?? "")) {
+    return "inflection";
+  }
+
+  const isConnectiveParticle =
+    curr.pos === "助詞" &&
+    curr.pos_detail_1 === "接続助詞" &&
+    (curr.text === "て" || curr.text === "で" || curr.text === "ば");
+  if (isConnectiveParticle && INFLECTABLE_POS.has(prev.pos ?? "")) {
+    return "connective";
+  }
+
+  // いる is a grammatical helper after the te-form. Use its base form so
+  // inflections such as 隠れていた (い → いる) remain one romanized word.
+  if (
+    curr.pos === "動詞" &&
+    curr.base_form === "いる" &&
+    prev.pos === "助詞" &&
+    prev.pos_detail_1 === "接続助詞" &&
+    (prev.text === "て" || prev.text === "で")
+  ) {
+    return "auxiliary";
+  }
+
+  // Negative/desiderative continuative + なる forms one conjugation chain.
+  if (
+    curr.pos === "動詞" &&
+    curr.base_form === "なる" &&
+    (prev.text === "なく" || prev.text === "たく")
+  ) {
+    return "auxiliary";
+  }
+
+  if (
+    curr.pos === "助詞" &&
+    curr.pos_detail_1 === "副助詞" &&
+    ((curr.text === "か" && prev.pos === "代名詞") ||
+      (curr.text === "きり" && prev.pos === "名詞"))
+  ) {
+    return "bound-particle";
+  }
+  if (curr.text === "たり" && INFLECTABLE_POS.has(prev.pos ?? "")) {
+    return "bound-particle";
+  }
+
+  // UniDic's non-independent verb tag expresses a grammatical dependency, not
+  // a romanization word boundary. In particular, stem + lexical verb pairs
+  // such as 辿り + つける should remain "tadori tsukeru".
+  if (curr.pos === "動詞" && curr.pos_detail_1?.startsWith("非自立")) {
+    return "dependent-verb";
+  }
+
+  return "independent";
+}
+
+export function resolveTokenRelationship(
+  prev: TokenReading | undefined,
+  curr: TokenReading,
+): TokenRelationship {
+  return curr.relationshipToPrevious ?? classifyTokenRelationship(prev, curr);
+}
+
+// ---------------------------------------------------------------------------
 // Main pipeline — Lindera tokenization + per-character kana readings
 // ---------------------------------------------------------------------------
 
@@ -256,7 +362,17 @@ export async function tokenizeAndReadFullLine(fullText: string): Promise<LineRea
     for (let j = 0; j < surfChars.length; j++) {
       chars.push({ kana: perChar[j] ?? surfChars[j], tokenIndex });
     }
-    outTokens.push({ text: surface, pos, pos_detail_1: posDetail1 });
+
+    const token = {
+      text: surface,
+      pos,
+      pos_detail_1: posDetail1,
+      base_form: getBaseForm(tok),
+    };
+    outTokens.push({
+      ...token,
+      relationshipToPrevious: classifyTokenRelationship(outTokens.at(-1), token),
+    });
   }
 
   return { chars, tokens: outTokens };

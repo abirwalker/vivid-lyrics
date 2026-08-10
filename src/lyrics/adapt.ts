@@ -3,50 +3,27 @@ import { romanizeJP } from "../utils/romanize";
 import {
   kanaToRomaji,
   tokenizeAndReadFullLine,
+  resolveTokenRelationship,
   type LineCharReading,
   type LineReading,
   type TokenReading,
+  type TokenRelationship,
 } from "../utils/romanize-jp";
 
-// Lexical compounds that tokenizers incorrectly split were previously handled
-// here (COMPOUND_WORDS). Removed — relying on raw tokenizer output instead.
-
-function shouldAttach(prev: TokenReading, curr: TokenReading): boolean {
-  // POS-based rules.
-  // 助動詞 (auxiliary verbs like た/ない/れる) attach to content words, but NOT
-  // to 助詞/形状詞 — so のように keeps spaces ("no you ni") while 見つけた stays
-  // joined ("mitsuketa").
-  const AUX_PREV = new Set(["動詞", "形容詞", "助動詞"]);
-  if (curr.pos === "助動詞" && AUX_PREV.has(prev.pos)) return true;
-  if (curr.pos === "接尾辞") return true;
-  if (curr.pos_detail_1 === "接尾") return true;
-  if (curr.pos === "動詞" && curr.pos_detail_1 === "非自立") return true;
-  // 接頭辞 (全/未/超/ご...) never stands alone: 全生命 → "zenseimei".
-  if (prev.pos === "接頭辞") return true;
-  // なく/たく + なる: 見れなくなった → "mirenakunatta" (but 届いたり stays separate after なく).
-  if (curr.pos === "動詞" && (prev.text === "なく" || prev.text === "たく") && curr.text.startsWith("な")) return true;
-
-  // Common helper / inflection forms
-  // て/で: only the te-form で (接続助詞) attaches — the particle で
-  // (格助詞: 二人で/自転車で) keeps its space ("futari de").
-  if (curr.text === "て" || (curr.text === "で" && curr.pos_detail_1 === "接続助詞")) return true;
-  if (curr.text === "ば") return true;
-  // いる/居る as 補助動詞 (non-自立可能) only after the te-form: 隠れている →
-  // "kakureteiru", but 僕がいる → "boku ga iru".
-  if ((curr.text === "いる" || curr.text === "居る") && prev.text === "て") return true;
-  if (curr.text === "ない" && AUX_PREV.has(prev.pos)) return true;
-  if (["れる", "られる", "せる", "させる"].includes(curr.text) && AUX_PREV.has(prev.pos)) return true;
-  // た/だ attach to verbs/adjectives, but copula だ after a noun stays separate
-  // ("genki da").
-  if (["た", "だ"].includes(curr.text) && AUX_PREV.has(prev.pos)) return true;
-  // か (副助詞) after an indefinite pronoun: いつか/何か/誰か → "itsuka".
-  if (curr.pos === "助詞" && curr.pos_detail_1 === "副助詞" && curr.text === "か" && prev.pos === "代名詞") return true;
-  // たり after a verb: 届いたり → "todoitari".
-  if (curr.text === "たり" && (prev.pos === "動詞" || prev.pos === "助動詞")) return true;
-  // きり (副助詞, "only") after a noun: 一人きり → "hitorikiri".
-  if (curr.text === "きり" && prev.pos === "名詞") return true;
-
-  return false;
+/** Map morphology to the word-boundary convention used by romaji output. */
+export function shouldAttachRomanization(relationship: TokenRelationship): boolean {
+  switch (relationship) {
+    case "prefix":
+    case "suffix":
+    case "inflection":
+    case "connective":
+    case "auxiliary":
+    case "bound-particle":
+      return true;
+    case "dependent-verb":
+    case "independent":
+      return false;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -75,7 +52,13 @@ export function buildSyllableKana(
       if (c.tokenIndex !== prevC.tokenIndex) {
         const prevTok = tokens[prevC.tokenIndex];
         const currTok = tokens[c.tokenIndex];
-        if (prevTok && currTok && !shouldAttach(prevTok, currTok)) seg += NBSP;
+        if (
+          prevTok &&
+          currTok &&
+          !shouldAttachRomanization(resolveTokenRelationship(prevTok, currTok))
+        ) {
+          seg += NBSP;
+        }
       }
     }
     seg += c.kana;
@@ -95,7 +78,8 @@ async function romanizeLineSpaced(text: string): Promise<string> {
       if (c.tokenIndex !== prevC.tokenIndex) {
         const prevTok = reading.tokens[prevC.tokenIndex];
         const currTok = reading.tokens[c.tokenIndex];
-        if (!shouldAttach(prevTok, currTok)) seg += " ";
+        const relationship = resolveTokenRelationship(prevTok, currTok);
+        if (!shouldAttachRomanization(relationship)) seg += " ";
       }
     }
     seg += c.kana;
