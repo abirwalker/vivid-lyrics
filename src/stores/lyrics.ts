@@ -9,6 +9,8 @@ let currentUri: string | null = null;
 let currentFetchId = 0;
 let lyricsLoading = false;
 const inFlightLoads = new Map<string, Promise<TransformedLyrics | null>>();
+const completedRomanizations = new WeakSet<TransformedLyrics>();
+const inFlightRomanizations = new WeakMap<TransformedLyrics, Promise<void>>();
 
 export function getLyrics(): TransformedLyrics | null {
   return currentLyrics;
@@ -31,19 +33,29 @@ async function ensureRomanized(lyrics: TransformedLyrics | null): Promise<void> 
   if (!lyrics) return;
 
   const lang = lyrics.romanizedLanguage;
-  console.log(`[VividLyrics] ensureRomanized: lang=${lang} type=${lyrics.type}`);
   if (lang !== "Japanese") {
-    console.log("[VividLyrics] ensureRomanized: skipped (not Japanese)");
     return;
   }
 
-  try {
-    await fillRomanizedText(lyrics);
-  } catch (err) {
-    // Romanization is an enhancement; a tokenizer failure should not hide
-    // otherwise valid lyrics.
-    console.error("[VividLyrics] romanization failed:", err);
-  }
+  if (completedRomanizations.has(lyrics)) return;
+  const existing = inFlightRomanizations.get(lyrics);
+  if (existing) return existing;
+
+  console.log(`[VividLyrics] ensureRomanized: lang=${lang} type=${lyrics.type}`);
+  const load = fillRomanizedText(lyrics)
+    .then(() => {
+      completedRomanizations.add(lyrics);
+    })
+    .catch((err) => {
+      // Romanization is an enhancement; a tokenizer failure should not hide
+      // otherwise valid lyrics. Leave it incomplete so a later call can retry.
+      console.error("[VividLyrics] romanization failed:", err);
+    })
+    .finally(() => {
+      inFlightRomanizations.delete(lyrics);
+    });
+  inFlightRomanizations.set(lyrics, load);
+  return load;
 }
 
 export async function loadLyrics(uri: string): Promise<TransformedLyrics | null> {
@@ -102,18 +114,19 @@ async function loadLyricsFresh(uri: string): Promise<TransformedLyrics | null> {
   if (fetchId !== currentFetchId) return null;
 
   currentLyrics = lyrics;
-  await ensureRomanized(lyrics);
-
-  // Romanization can be asynchronous, so the request may have become stale
-  // while it was running.
-  if (fetchId !== currentFetchId) return null;
-
   lyricsLoading = false;
   emit("lyrics:change", lyrics);
 
   if (lyrics?.romanizedLanguage) {
     console.log(`[VividLyrics] detected language: ${lyrics.romanizedLanguage}`);
   }
+
+  // Render original lyrics immediately. Romanization may include the one-time
+  // WASM/dictionary startup cost, so publish it as a background enhancement.
+  void ensureRomanized(lyrics).then(() => {
+    if (fetchId !== currentFetchId || currentLyrics !== lyrics) return;
+    emit("lyrics:change", lyrics);
+  });
 
   return lyrics;
 }

@@ -228,22 +228,17 @@ export function alignSurfaceToKana(surface: string, kana: string): string[] {
     return out;
   }
 
-  let ri = reading.length - 1;
-  for (let i = chars.length - 1; i >= 0 && ri >= 0; i--) {
-    if (isKana(chars[i]) && out[i] === "") out[i] = toHiragana(reading[ri--]);
-  }
-  let li = 0;
-  for (let i = 0; i < chars.length && li <= ri; i++) {
-    if (isKana(chars[i]) && out[i] === "") out[i] = toHiragana(reading[li++]);
-  }
-  const chunk = reading.slice(li, ri + 1);
-  const kanjiSlots: number[] = [];
+  // Strict matching can fail when the dictionary pronunciation differs from
+  // the written okurigana. In that uncommon case, distribute the reading over
+  // every Japanese surface slot. The old fallback distributed the complete
+  // reading over kanji and then retained the surface kana, duplicating sounds.
+  const japaneseSlots: number[] = [];
   for (let i = 0; i < chars.length; i++) {
-    if (isKanji(chars[i])) kanjiSlots.push(i);
+    if (isKanji(chars[i]) || isKana(chars[i])) japaneseSlots.push(i);
   }
-  const split = distributeKana(chunk, kanjiSlots.length);
-  for (let k = 0; k < kanjiSlots.length; k++) {
-    out[kanjiSlots[k]] = split[k] ?? chars[kanjiSlots[k]];
+  const split = distributeKana(reading, japaneseSlots.length);
+  for (let k = 0; k < japaneseSlots.length; k++) {
+    out[japaneseSlots[k]] = split[k] || chars[japaneseSlots[k]];
   }
   for (let i = 0; i < out.length; i++) {
     if (out[i] === "") out[i] = chars[i];
@@ -344,6 +339,25 @@ export function resolveTokenRelationship(
   return curr.relationshipToPrevious ?? classifyTokenRelationship(prev, curr);
 }
 
+/** Whether a character offset starts a new romanized token group. */
+export function hasRomanizationBoundaryAt(
+  chars: LineCharReading[],
+  tokens: TokenReading[],
+  index: number,
+): boolean {
+  if (index <= 0 || index >= chars.length) return false;
+  const prevC = chars[index - 1];
+  const currC = chars[index];
+  if (currC.tokenIndex === prevC.tokenIndex) return false;
+  const prevTok = tokens[prevC.tokenIndex];
+  const currTok = tokens[currC.tokenIndex];
+  return !!(
+    prevTok &&
+    currTok &&
+    !shouldAttachRomanization(resolveTokenRelationship(prevTok, currTok))
+  );
+}
+
 /** Build a kana range while preserving token boundaries within a syllable. */
 export function buildKanaWithTokenBoundaries(
   chars: LineCharReading[],
@@ -357,18 +371,7 @@ export function buildKanaWithTokenBoundaries(
     const c = chars[i];
     if (!c) break;
     if (i > start) {
-      const prevC = chars[i - 1];
-      if (c.tokenIndex !== prevC.tokenIndex) {
-        const prevTok = tokens[prevC.tokenIndex];
-        const currTok = tokens[c.tokenIndex];
-        if (
-          prevTok &&
-          currTok &&
-          !shouldAttachRomanization(resolveTokenRelationship(prevTok, currTok))
-        ) {
-          seg += separator;
-        }
-      }
+      if (hasRomanizationBoundaryAt(chars, tokens, i)) seg += separator;
     }
     seg += c.kana;
   }
@@ -389,7 +392,10 @@ export function buildSpacedKana(reading: LineReading): string {
 // Main pipeline — Lindera tokenization + per-character kana readings
 // ---------------------------------------------------------------------------
 
-export async function tokenizeAndReadFullLine(fullText: string): Promise<LineReading | null> {
+export async function tokenizeAndReadFullLine(
+  fullText: string,
+  providerWordStarts?: ReadonlySet<number>,
+): Promise<LineReading | null> {
   try {
     await ensureLindera();
   } catch (e) {
@@ -400,10 +406,26 @@ export async function tokenizeAndReadFullLine(fullText: string): Promise<LineRea
   const tokens = tokenize(fullText);
   const chars: LineCharReading[] = [];
   const outTokens: TokenReading[] = [];
+  let surfaceOffset = 0;
 
   for (let i = 0; i < tokens.length; i++) {
-    const tok = tokens[i];
+    let tok = tokens[i];
     const surface = tok.surface ?? "";
+    // UniDic may parse a real word as a suffix when Japanese lyric words are
+    // concatenated without spaces (e.g. 臓風 -> 風/フウ). If the timed-lyrics
+    // metadata says this token begins a word, retry just this surface and use
+    // the independent analysis when it is unambiguous.
+    if (providerWordStarts?.has(surfaceOffset) && getPos(tok) === "接尾辞") {
+      const isolated = tokenize(surface);
+      if (
+        isolated.length === 1 &&
+        isolated[0].surface === surface &&
+        getPos(isolated[0]) !== "接尾辞" &&
+        getReading(isolated[0])
+      ) {
+        tok = isolated[0];
+      }
+    }
     const rawReading = getReading(tok);
 
     let resolvedKana: string;
@@ -441,6 +463,7 @@ export async function tokenizeAndReadFullLine(fullText: string): Promise<LineRea
       ...token,
       relationshipToPrevious: classifyTokenRelationship(outTokens.at(-1), token),
     });
+    surfaceOffset += [...surface].length;
   }
 
   return { chars, tokens: outTokens };

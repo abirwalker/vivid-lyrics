@@ -2,6 +2,7 @@ import type { TransformedLyrics } from "./types";
 import { romanizeJP } from "../utils/romanize";
 import {
   buildKanaWithTokenBoundaries,
+  hasRomanizationBoundaryAt,
   kanaToRomaji,
   tokenizeAndReadFullLine,
   type LineCharReading,
@@ -211,7 +212,16 @@ export async function fillRomanizedText(lyrics: TransformedLyrics): Promise<void
       if (!allExist) {
         const fullText = syllables.map((s: any) => s.text ?? s.Text ?? "").join("");
         if (fullText) {
-          const reading = await tokenizeAndReadFullLine(fullText);
+          const providerWordStarts = new Set<number>();
+          let providerOffset = 0;
+          for (let i = 0; i < syllables.length; i++) {
+            const s = syllables[i];
+            if (i > 0 && !syllables[i - 1].IsPartOfWord) {
+              providerWordStarts.add(providerOffset);
+            }
+            providerOffset += [...(s.text ?? s.Text ?? "")].length;
+          }
+          const reading = await tokenizeAndReadFullLine(fullText, providerWordStarts);
 
           let charOffset = 0;
           for (let sIdx = 0; sIdx < syllables.length; sIdx++) {
@@ -222,6 +232,12 @@ export async function fillRomanizedText(lyrics: TransformedLyrics): Promise<void
 
             let romaji = "";
             if (reading) {
+              s.RomanizedStartsWord = hasRomanizationBoundaryAt(
+                reading.chars,
+                reading.tokens,
+                charOffset,
+              );
+              s.romanizedStartsWord = s.RomanizedStartsWord;
               romaji = await syllableRomaji(reading, charOffset, charOffset + sLen);
             } else {
               // Tokenizer unavailable — per-syllable romanizeJP fallback

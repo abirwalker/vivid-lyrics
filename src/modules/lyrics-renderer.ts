@@ -432,6 +432,20 @@ export default class LyricsRenderer {
 
       const syllableData: SyllableInfo[] = [];
       const isSyllableType = !!item.Lead?.Syllables?.length;
+      const startsWord = (list: any[], index: number): boolean => {
+        if (index === 0) return true;
+        if (showRomanized) {
+          return !!(
+            list[index].RomanizedStartsWord ??
+            list[index].romanizedStartsWord
+          );
+        }
+        return !list[index - 1].IsPartOfWord;
+      };
+      const displayText = (s: any): string =>
+        showRomanized
+          ? (s.RomanizedText ?? s.romanizedText ?? s.Text ?? "")
+          : (s.Text ?? "");
 
       if (isSyllableType) {
         const syllables: any[] = item.Lead.Syllables;
@@ -439,7 +453,7 @@ export default class LyricsRenderer {
         const words: any[][] = [];
         let currentWord: any[] | null = null;
         for (let i = 0; i < syllables.length; i++) {
-          const isFirstInWord = i === 0 || !syllables[i - 1].IsPartOfWord;
+          const isFirstInWord = startsWord(syllables, i);
           if (isFirstInWord) {
             currentWord = [syllables[i]];
             words.push(currentWord);
@@ -458,7 +472,7 @@ export default class LyricsRenderer {
             const sStartTime = s.StartTime ?? startTime;
             const sEndTime = s.EndTime ?? endTime;
             const sDuration = sEndTime - sStartTime;
-            const text = showRomanized ? (s.RomanizedText ?? s.romanizedText ?? s.Text ?? "") : (s.Text ?? "");
+            const text = displayText(s);
             const textLen = text.length;
             const emphasized = isEmphasized(sDuration, textLen);
 
@@ -575,14 +589,13 @@ export default class LyricsRenderer {
         const placeholderSyllables: any[] = item.Lead.Syllables;
         let placeholderWord: HTMLSpanElement | null = null;
         for (let i = 0; i < placeholderSyllables.length; i++) {
-          const isFirstInWord =
-            i === 0 || !placeholderSyllables[i - 1].IsPartOfWord;
+          const isFirstInWord = startsWord(placeholderSyllables, i);
           if (isFirstInWord || !placeholderWord) {
             placeholderWord = document.createElement("span");
             placeholderWord.className = "Word";
             placeholder.appendChild(placeholderWord);
           }
-          placeholderWord.textContent += placeholderSyllables[i].Text ?? "";
+          placeholderWord.textContent += displayText(placeholderSyllables[i]);
         }
       }
 

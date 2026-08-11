@@ -46,18 +46,24 @@ function showProgress(): void {
   console.log("[VividLyrics] Lindera WASM initialization started");
 }
 
-function hideProgress(): void {
+function hideProgress(error?: unknown): void {
   const text = progressEl?.shadowRoot?.querySelector(".text");
   const fill = progressEl?.shadowRoot?.querySelector(".fill") as HTMLElement | null;
-  if (text) text.textContent = "Japanese dictionary loaded!";
-  if (fill) fill.style.width = "100%";
+  if (text) text.textContent = error
+    ? "Japanese dictionary failed to load; using kana fallback."
+    : "Japanese dictionary loaded!";
+  if (fill) {
+    fill.style.width = "100%";
+    if (error) fill.style.background = "#ef4444";
+  }
   setTimeout(() => {
     if (progressEl) {
       progressEl.remove();
       progressEl = null;
     }
   }, 1200);
-  console.log("[VividLyrics] Lindera WASM initialization complete");
+  if (error) console.error("[VividLyrics] Lindera WASM initialization failed:", error);
+  else console.log("[VividLyrics] Lindera WASM initialization complete");
 }
 
 export interface LinderaToken {
@@ -114,8 +120,11 @@ export async function ensureLindera(): Promise<any> {
         builder.setMode("normal");
         builder.setDictionary("embedded://unidic");
         tokenizer = builder.build();
-      } finally {
         hideProgress();
+      } catch (error) {
+        hideProgress(error);
+        initPromise = null;
+        throw error;
       }
       return tokenizer;
     })();
