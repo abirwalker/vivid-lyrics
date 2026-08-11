@@ -1,4 +1,7 @@
 import { transliterate } from "transliteration";
+import { addTraditionalDict, pinyin } from "pinyin-pro";
+import TraditionalDict from "@pinyin-pro/data/traditional";
+import ToJyutping from "to-jyutping";
 import {
   buildSpacedKana,
   kanaToRomaji,
@@ -6,6 +9,25 @@ import {
 } from "./romanize-jp";
 
 const CJK = /[\u4E00-\u9FFF]/;
+
+addTraditionalDict(TraditionalDict);
+
+/** Romanize Mandarin Chinese with contextual polyphone handling. */
+export function romanizeChinese(text: string): string {
+  if (!text) return text;
+  return pinyin(text, {
+    toneType: "symbol",
+    nonZh: "consecutive",
+    separator: "-",
+    traditional: true,
+  });
+}
+
+/** Romanize Cantonese using Jyutping, including tone numbers. */
+export function romanizeCantonese(text: string): string {
+  if (!text) return text;
+  return ToJyutping.getJyutpingText(text);
+}
 
 /** Romanize Japanese with Lindera word boundaries and a kana-only fallback. */
 export async function romanizeJP(text: string): Promise<string> {

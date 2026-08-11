@@ -121,8 +121,9 @@ html.vl-centered-text .VividLyrics-FullscreenContent .VL-FS-Line,
 
     & .Vocals.Background {
         opacity: 0.275;
-        font-size: calc(inherit * 0.75);
+        font-size: 0.75em;
         font-weight: 500;
+        margin-top: 0.08em;
     }
 
     &.Active .Vocals.Background {

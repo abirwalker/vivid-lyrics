@@ -12,15 +12,18 @@
     "fmt": "oxfmt"
   },
   "dependencies": {
+    "@pinyin-pro/data": "^1.3.0",
     "@spicemod/creator": "^0.0.35",
     "@spikerko/tools": "npm:@jsr/spikerko__tools",
     "@spikerko/web-modules": "npm:@jsr/spikerko__web-modules",
     "cubic-spline": "^3.0.3",
     "d3-ease": "^3.0.1",
     "lindera-wasm-web-unidic": "^2.0.0",
+    "pinyin-pro": "^3.28.1",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "simplebar": "^6.3.3",
+    "to-jyutping": "^3.1.1",
     "transliteration": "^2.6.1",
     "wanakana": "^5.3.1"
   },

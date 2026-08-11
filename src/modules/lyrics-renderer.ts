@@ -69,6 +69,12 @@ type SyllableInfo = {
   letters: LetterInfo[];
 };
 
+type BackgroundSyllableInfo = {
+  span: HTMLSpanElement;
+  startTime: number;
+  endTime: number;
+};
+
 type DotInfo = {
   span: HTMLSpanElement;
   startTime: number;
@@ -85,6 +91,7 @@ type LineInfo = {
   duration: number;
   state: LyricState;
   syllables: SyllableInfo[];
+  backgroundSyllables: BackgroundSyllableInfo[];
   isSyllableType: boolean;
   glowSpring: Spring | null;
   dots?: DotInfo[];
@@ -406,6 +413,7 @@ export default class LyricsRenderer {
           duration: itemEnd - itemStart,
           state: "Idle",
           syllables: [],
+          backgroundSyllables: [],
           isSyllableType: false,
           glowSpring: null,
           dots,
@@ -431,6 +439,7 @@ export default class LyricsRenderer {
       vocals.className = "Vocals Lead";
 
       const syllableData: SyllableInfo[] = [];
+      const backgroundSyllableData: BackgroundSyllableInfo[] = [];
       const isSyllableType = !!item.Lead?.Syllables?.length;
       const startsWord = (list: any[], index: number): boolean => {
         if (index === 0) return true;
@@ -477,7 +486,10 @@ export default class LyricsRenderer {
             const emphasized = isEmphasized(sDuration, textLen);
 
             const span = document.createElement("span");
-            span.className = s.IsPartOfWord ? "Syllable PartOfWord" : "Syllable";
+            span.className = [
+              "Syllable",
+              s.IsPartOfWord ? "PartOfWord" : "",
+            ].filter(Boolean).join(" ");
             span.addEventListener("click", (e) => {
               if (!get("wordSeekEnabled")) return;
               e.stopPropagation();
@@ -572,6 +584,46 @@ export default class LyricsRenderer {
         ? null
         : (vocals.querySelector(".Lyric.Synced") as HTMLElement | null);
 
+      // Background vocals are independent timed tracks. Render them as their
+      // own subdued rows instead of folding them into the lead's word tree;
+      // that keeps the lead animation/virtualizer fast and makes every track
+      // available in both original and romanized views.
+      const backgroundVocals: HTMLDivElement[] = [];
+      const backgroundTracks: any[] = item.Background ?? item.background ?? [];
+      for (const track of backgroundTracks) {
+        const syllables: any[] = track.Syllables ?? track.syllables ?? [];
+        if (!syllables.length) continue;
+
+        const background = document.createElement("div");
+        background.className = "Vocals Background";
+        let word: HTMLSpanElement | null = null;
+        for (let index = 0; index < syllables.length; index++) {
+          const syllable = syllables[index];
+          if (startsWord(syllables, index) || !word) {
+            word = document.createElement("span");
+            word.className = "Word";
+            background.appendChild(word);
+          }
+          const span = document.createElement("span");
+          span.className = "Syllable";
+          span.textContent = displayText(syllable);
+          const syllableStart = syllable.StartTime ?? track.StartTime ?? startTime;
+          const syllableEnd = syllable.EndTime ?? track.EndTime ?? syllableStart;
+          span.addEventListener("click", (e) => {
+            if (!get("wordSeekEnabled")) return;
+            e.stopPropagation();
+            Spicetify.Player.seek(syllableStart * 1000);
+          });
+          word.appendChild(span);
+          backgroundSyllableData.push({
+            span,
+            startTime: syllableStart,
+            endTime: syllableEnd,
+          });
+        }
+        backgroundVocals.push(background);
+      }
+
       // Placeholder used when this line's detailed word/syllable/letter tree is
       // virtualized out (see LyricsRenderer.applyVirtualizationWindow). Built now
       // but not swapped in yet — buildLines() leaves every line fully mounted so
@@ -600,6 +652,7 @@ export default class LyricsRenderer {
       }
 
       group.appendChild(vocals);
+      for (const background of backgroundVocals) group.appendChild(background);
 
       const startTimeCopy = startTime;
       group.addEventListener("click", () => {
@@ -677,6 +730,7 @@ export default class LyricsRenderer {
         duration,
         state: "Idle",
         syllables: syllableData,
+        backgroundSyllables: backgroundSyllableData,
         isSyllableType,
         glowSpring: isSyllableType
           ? null
@@ -1203,6 +1257,17 @@ export default class LyricsRenderer {
     springConfig: SpicySpringConfig,
     ctx: FrameCtx,
   ): void {
+    // Background tracks have their own timestamps. They intentionally do not
+    // use bounce springs (the lead must remain visually dominant), but their
+    // gradient follows each sung syllable just like a line-synced lyric.
+    for (const syllable of line.backgroundSyllables) {
+      const duration = syllable.endTime - syllable.startTime;
+      const progress = duration > 0
+        ? clamp((songTimestamp - syllable.startTime) / duration, 0, 1)
+        : songTimestamp >= syllable.startTime ? 1 : 0;
+      setCachedStyle(syllable.span, "--char-progress", `${-20 + progress * 140}%`);
+    }
+
     const replacePos = this.lastTimestamp === -1;
     const relativeTime = songTimestamp - line.startTime;
     const pastStart = relativeTime >= 0;

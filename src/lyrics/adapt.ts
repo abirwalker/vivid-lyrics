@@ -1,5 +1,5 @@
 import type { TransformedLyrics } from "./types";
-import { romanizeJP } from "../utils/romanize";
+import { romanizeCantonese, romanizeChinese, romanizeJP } from "../utils/romanize";
 import {
   buildKanaWithTokenBoundaries,
   hasRomanizationBoundaryAt,
@@ -40,8 +40,8 @@ const RTL_LANGS = ["ara", "ar", "heb", "he", "fas", "fa", "urd", "ur"];
 
 const API_LANG_MAP: Record<string, string> = {
   jpn: "Japanese", ja: "Japanese",
-  cmn: "Chinese", zh: "Chinese",
-  yue: "Chinese",
+  cmn: "Chinese", zh: "Chinese", zho: "Chinese", chi: "Chinese", cn: "Chinese",
+  yue: "Cantonese",
   kor: "Korean", ko: "Korean",
   rus: "Russian", ru: "Russian",
   ukr: "Ukrainian", uk: "Ukrainian",
@@ -72,7 +72,8 @@ const SCRIPT_TESTS: [RegExp, string][] = [
 
 function fromApiCode(lang?: string): string | undefined {
   if (!lang || lang === "und") return undefined;
-  return API_LANG_MAP[lang.toLowerCase()];
+  const normalized = lang.toLowerCase().replace(/_/g, "-");
+  return API_LANG_MAP[normalized] ?? API_LANG_MAP[normalized.split("-")[0]];
 }
 
 export function fromScript(text: string): string | undefined {
@@ -177,7 +178,14 @@ function dumpRomanizedLyrics(lines: string[]): void {
 }
 
 export async function fillRomanizedText(lyrics: TransformedLyrics): Promise<void> {
-  if (lyrics.romanizedLanguage !== "Japanese") return;
+  const language = lyrics.romanizedLanguage;
+  if (language !== "Japanese" && language !== "Chinese" && language !== "Cantonese") return;
+
+  if (language !== "Japanese") {
+    const romanize = language === "Cantonese" ? romanizeCantonese : romanizeChinese;
+    await fillSimpleRomanizedText(lyrics, romanize, language);
+    return;
+  }
 
   const t0 = performance.now();
   const romanizedDump: string[] = [];
@@ -272,6 +280,50 @@ export async function fillRomanizedText(lyrics: TransformedLyrics): Promise<void
       fromApi++;
     }
   }
+  // Background tracks are timed independently from the lead, so process each
+  // complete track as its own line. This keeps the tokenizer's word boundaries
+  // and avoids leaking original Japanese when romanization is enabled.
+  for (const item of content) {
+    for (const track of item.Background ?? item.background ?? []) {
+      const syllables: any[] = track.Syllables ?? track.syllables ?? [];
+      if (!syllables.length) continue;
+      if (syllables.every((s: any) => s.romanizedText ?? s.RomanizedText)) {
+        fromApi += syllables.length;
+        continue;
+      }
+
+      const fullText = syllables.map((s: any) => s.text ?? s.Text ?? "").join("");
+      if (!fullText) continue;
+      const wordStarts = new Set<number>();
+      let sourceOffset = 0;
+      for (let index = 0; index < syllables.length; index++) {
+        if (index > 0 && !syllables[index - 1].IsPartOfWord) wordStarts.add(sourceOffset);
+        sourceOffset += [...(syllables[index].text ?? syllables[index].Text ?? "")].length;
+      }
+      const reading = await tokenizeAndReadFullLine(fullText, wordStarts);
+      let charOffset = 0;
+      for (const syllable of syllables) {
+        const text = syllable.text ?? syllable.Text ?? "";
+        const charLength = [...text].length;
+        if (!charLength) continue;
+        const value = reading
+          ? await syllableRomaji(reading, charOffset, charOffset + charLength)
+          : await romanizeJP(text);
+        if (reading) {
+          syllable.RomanizedStartsWord = hasRomanizationBoundaryAt(reading.chars, reading.tokens, charOffset);
+          syllable.romanizedStartsWord = syllable.RomanizedStartsWord;
+        }
+        if (value) {
+          syllable.romanizedText = value;
+          syllable.RomanizedText = value;
+          romanized++;
+          fromLindera++;
+        }
+        charOffset += charLength;
+      }
+    }
+  }
+
   console.log(`[VividLyrics] fillRomanizedText: ${content.length} items — ${fromApi} from API, ${fromLindera} via Lindera in ${Math.round(performance.now() - t0)}ms`);
 
   // Build romanized dump for debugging / comparison
@@ -291,4 +343,57 @@ export async function fillRomanizedText(lyrics: TransformedLyrics): Promise<void
   }
 
   dumpRomanizedLyrics(romanizedDump);
+}
+
+/** Fill non-Japanese romanization without changing the provider's syllable timing. */
+async function fillSimpleRomanizedText(
+  lyrics: TransformedLyrics,
+  romanize: (text: string) => string,
+  language: "Chinese" | "Cantonese",
+): Promise<void> {
+  let generated = 0;
+  let fromApi = 0;
+
+  const fill = (target: any, text: string): void => {
+    const existing = target.romanizedText ?? target.RomanizedText;
+    if (existing) {
+      fromApi++;
+      return;
+    }
+    if (!text) return;
+    const value = romanize(text);
+    if (!value) return;
+    target.romanizedText = value;
+    target.RomanizedText = value;
+    generated++;
+  };
+
+  if (lyrics.type === "Static") {
+    for (const line of lyrics.lines) fill(line, line.text);
+    console.log(`[VividLyrics] fillRomanizedText: ${lyrics.lines.length} static ${language} lines — ${fromApi} from API, ${generated} generated`);
+    return;
+  }
+
+  const content = (lyrics as any).content ?? [];
+  for (const item of content) {
+    if (item.type === "Interlude" || item.Type === "Interlude") continue;
+    const vocalTracks = [
+      item.Lead?.Syllables ?? item.lead?.syllables,
+      ...(item.Background ?? item.background ?? []).map((track: any) => track.Syllables ?? track.syllables),
+    ].filter((track: unknown): track is any[] => Array.isArray(track) && track.length > 0);
+    if (vocalTracks.length > 0) {
+      for (const syllables of vocalTracks) {
+        for (let index = 0; index < syllables.length; index++) {
+          const syllable = syllables[index];
+          const startsWord = index === 0 || !syllables[index - 1].IsPartOfWord;
+          syllable.RomanizedStartsWord = startsWord;
+          syllable.romanizedStartsWord = startsWord;
+          fill(syllable, syllable.text ?? syllable.Text ?? "");
+        }
+      }
+    } else {
+      fill(item, item.text ?? item.Text ?? "");
+    }
+  }
+  console.log(`[VividLyrics] fillRomanizedText: ${content.length} ${language} items — ${fromApi} from API, ${generated} generated`);
 }
