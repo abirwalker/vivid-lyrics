@@ -6,7 +6,7 @@ import { setupSettings, applyStoredFont } from "./components/settings-modal";
 import { setupProfileMenu } from "./components/profile-menu";
 import { setupDevBadge } from "./components/dev-badge";
 
-const VividLyrics = { version: "0.1.1" };
+const VividLyrics = { version: "0.2.0" };
 
 async function waitForSpicetify(): Promise<void> {
   return new Promise((resolve) => {

@@ -2,6 +2,7 @@ import { transliterate } from "transliteration";
 import { addTraditionalDict, pinyin } from "pinyin-pro";
 import TraditionalDict from "@pinyin-pro/data/traditional";
 import ToJyutping from "to-jyutping";
+import { romanize as koromanize } from "koroman";
 import {
   buildSpacedKana,
   kanaToRomaji,
@@ -27,6 +28,16 @@ export function romanizeChinese(text: string): string {
 export function romanizeCantonese(text: string): string {
   if (!text) return text;
   return ToJyutping.getJyutpingText(text);
+}
+
+const HANGUL_RUN = /[\uAC00-\uD7AF\u1100-\u11FF\u3130-\u318F]+/g;
+
+/** Romanize Korean (Hangul) with Revised Romanization, including phonological
+ * rules (liaison, nasal/lateral assimilation). Only Hangul runs are converted;
+ * latin/punctuation pass through untouched. */
+export function romanizeKorean(text: string): string {
+  if (!text) return text;
+  return text.replace(HANGUL_RUN, (run) => koromanize(run));
 }
 
 /** Romanize Japanese with Lindera word boundaries and a kana-only fallback. */

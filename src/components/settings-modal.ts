@@ -471,7 +471,7 @@ function buildContent(): HTMLElement {
 
   const version = document.createElement("div");
   version.className = "VL-Version";
-  version.textContent = "Vivid Lyrics v0.1.0";
+  version.textContent = "Vivid Lyrics v0.2.0";
   content.appendChild(version);
 
   return content;
