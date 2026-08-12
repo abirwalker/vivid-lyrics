@@ -35,7 +35,7 @@ async function ensureRomanized(lyrics: TransformedLyrics | null): Promise<void> 
   const lang = lyrics.romanizedLanguage;
   if (
     lang !== "Japanese" && lang !== "Chinese" && lang !== "Cantonese" &&
-    lang !== "Korean" && lang !== "Thai"
+    lang !== "Korean" && lang !== "Thai" && lang !== "Bengali"
   ) {
     return;
   }

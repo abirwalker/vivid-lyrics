@@ -1,5 +1,5 @@
 import type { TransformedLyrics } from "./types";
-import { romanizeCantonese, romanizeChinese, romanizeJP, romanizeKorean } from "../utils/romanize";
+import { romanizeBengali, romanizeCantonese, romanizeChinese, romanizeJP, romanizeKorean } from "../utils/romanize";
 import { romanizeThaiLine } from "../utils/romanize-th";
 import {
   buildKanaWithTokenBoundaries,
@@ -183,7 +183,7 @@ export async function fillRomanizedText(lyrics: TransformedLyrics): Promise<void
   const language = lyrics.romanizedLanguage;
   if (
     language !== "Japanese" && language !== "Chinese" && language !== "Cantonese" &&
-    language !== "Korean" && language !== "Thai"
+    language !== "Korean" && language !== "Thai" && language !== "Bengali"
   ) return;
 
   if (language !== "Japanese") {
@@ -191,6 +191,7 @@ export async function fillRomanizedText(lyrics: TransformedLyrics): Promise<void
       language === "Cantonese" ? romanizeCantonese
       : language === "Korean" ? romanizeKorean
       : language === "Thai" ? romanizeThaiLine
+      : language === "Bengali" ? romanizeBengali
       : romanizeChinese;
     await fillSimpleRomanizedText(lyrics, romanize, language);
     return;
@@ -358,7 +359,7 @@ export async function fillRomanizedText(lyrics: TransformedLyrics): Promise<void
 async function fillSimpleRomanizedText(
   lyrics: TransformedLyrics,
   romanize: (text: string) => string | Promise<string>,
-  language: "Chinese" | "Cantonese" | "Korean" | "Thai",
+  language: "Chinese" | "Cantonese" | "Korean" | "Thai" | "Bengali",
 ): Promise<void> {
   let generated = 0;
   let fromApi = 0;

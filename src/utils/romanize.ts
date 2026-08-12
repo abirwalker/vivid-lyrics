@@ -3,6 +3,7 @@ import { addTraditionalDict, pinyin } from "pinyin-pro";
 import TraditionalDict from "@pinyin-pro/data/traditional";
 import ToJyutping from "to-jyutping";
 import { romanize as koromanize } from "koroman";
+import { romanizeBengaliLine } from "./romanize-bn";
 import {
   buildSpacedKana,
   kanaToRomaji,
@@ -38,6 +39,11 @@ const HANGUL_RUN = /[\uAC00-\uD7AF\u1100-\u11FF\u3130-\u318F]+/g;
 export function romanizeKorean(text: string): string {
   if (!text) return text;
   return text.replace(HANGUL_RUN, (run) => koromanize(run));
+}
+
+/** Romanize Bengali script with phonetic transliteration. */
+export function romanizeBengali(text: string): string {
+  return romanizeBengaliLine(text);
 }
 
 /** Romanize Japanese with Lindera word boundaries and a kana-only fallback. */
