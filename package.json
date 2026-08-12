@@ -20,6 +20,7 @@
     "d3-ease": "^3.0.1",
     "koroman": "^1.0.16",
     "lindera-wasm-web-unidic": "^2.0.0",
+    "nlpo3-newmm-typescript": "^1.1.0",
     "pinyin-pro": "^3.28.1",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",

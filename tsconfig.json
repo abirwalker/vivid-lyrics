@@ -21,4 +21,5 @@
     "noPropertyAccessFromIndexSignature": false,
   },
   "include": ["**/*.ts", "**/*.tsx", "**/*.d.ts"],
+  "exclude": ["scripts"],
 }

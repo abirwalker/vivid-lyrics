@@ -1,5 +1,6 @@
 import type { TransformedLyrics } from "./types";
 import { romanizeCantonese, romanizeChinese, romanizeJP, romanizeKorean } from "../utils/romanize";
+import { romanizeThaiLine } from "../utils/romanize-th";
 import {
   buildKanaWithTokenBoundaries,
   hasRomanizationBoundaryAt,
@@ -169,29 +170,34 @@ export function adaptLyrics(response: any): TransformedLyrics {
   throw new Error(`Unknown lyrics type: ${response.Type}`);
 }
 
-function dumpRomanizedLyrics(lines: string[]): void {
-  if (!lines.length) return;
-  const header = "[VividLyrics][romanized-dump] ===== FULL ROMANIZED LYRICS =====";
-  const body = lines.join("\n");
-  const footer = "════════════════════════════════════════════════";
-  console.log(`%c${header}\n${body}\n${footer}`, "color: #1db954; font-weight: bold");
+function dumpRomanizedLyrics(pairs: Array<[string, string]>): void {
+  if (!pairs.length) return;
+  console.log("%c[VividLyrics][romanized-dump] ===== FULL ROMANIZED LYRICS =====", "color: #1db954; font-weight: bold");
+  for (const [original, romanized] of pairs) {
+    console.log(`${original}  ->  ${romanized}`);
+  }
+  console.log("════════════════════════════════════════════════");
 }
 
 export async function fillRomanizedText(lyrics: TransformedLyrics): Promise<void> {
   const language = lyrics.romanizedLanguage;
-  if (language !== "Japanese" && language !== "Chinese" && language !== "Cantonese" && language !== "Korean") return;
+  if (
+    language !== "Japanese" && language !== "Chinese" && language !== "Cantonese" &&
+    language !== "Korean" && language !== "Thai"
+  ) return;
 
   if (language !== "Japanese") {
     const romanize =
       language === "Cantonese" ? romanizeCantonese
       : language === "Korean" ? romanizeKorean
+      : language === "Thai" ? romanizeThaiLine
       : romanizeChinese;
     await fillSimpleRomanizedText(lyrics, romanize, language);
     return;
   }
 
   const t0 = performance.now();
-  const romanizedDump: string[] = [];
+  const romanizedDump: Array<[string, string]> = [];
   let fromApi = 0;
   let fromLindera = 0;
 
@@ -203,7 +209,7 @@ export async function fillRomanizedText(lyrics: TransformedLyrics): Promise<void
       } else if (line.romanizedText) {
         fromApi++;
       }
-      if (line.romanizedText) romanizedDump.push(line.romanizedText);
+      if (line.romanizedText) romanizedDump.push([line.text, line.romanizedText]);
     }
     console.log(`[VividLyrics] fillRomanizedText: ${lyrics.lines.length} static lines — ${fromApi} from API, ${fromLindera} via Lindera (${Math.round(performance.now() - t0)}ms)`);
     dumpRomanizedLyrics(romanizedDump);
@@ -331,7 +337,7 @@ export async function fillRomanizedText(lyrics: TransformedLyrics): Promise<void
 
   // Build romanized dump for debugging / comparison
   for (const item of content) {
-    if (item.type === "Interlude" || item.Type === "Interlude") { romanizedDump.push(""); continue; }
+    if (item.type === "Interlude" || item.Type === "Interlude") { romanizedDump.push(["", ""]); continue; }
 
     const syllables = item.Lead?.Syllables ?? item.lead?.syllables ?? [];
     if (syllables.length > 0) {
@@ -339,9 +345,9 @@ export async function fillRomanizedText(lyrics: TransformedLyrics): Promise<void
       // per-syllable pieces can't do this: a boundary falling between two
       // syllables would lose its NBSP in the concatenation.
       const fullText = syllables.map((s: any) => s.text ?? s.Text ?? "").join("");
-      romanizedDump.push(fullText ? await romanizeJP(fullText) : "");
+      romanizedDump.push(fullText ? [fullText, await romanizeJP(fullText)] : ["", ""]);
     } else {
-      romanizedDump.push(item.romanizedText ?? item.RomanizedText ?? "");
+      romanizedDump.push([item.text ?? item.Text ?? "", item.romanizedText ?? item.RomanizedText ?? ""]);
     }
   }
 
@@ -351,20 +357,20 @@ export async function fillRomanizedText(lyrics: TransformedLyrics): Promise<void
 /** Fill non-Japanese romanization without changing the provider's syllable timing. */
 async function fillSimpleRomanizedText(
   lyrics: TransformedLyrics,
-  romanize: (text: string) => string,
-  language: "Chinese" | "Cantonese" | "Korean",
+  romanize: (text: string) => string | Promise<string>,
+  language: "Chinese" | "Cantonese" | "Korean" | "Thai",
 ): Promise<void> {
   let generated = 0;
   let fromApi = 0;
 
-  const fill = (target: any, text: string): void => {
+  const fill = async (target: any, text: string): Promise<void> => {
     const existing = target.romanizedText ?? target.RomanizedText;
     if (existing) {
       fromApi++;
       return;
     }
     if (!text) return;
-    const value = romanize(text);
+    const value = await romanize(text);
     if (!value) return;
     target.romanizedText = value;
     target.RomanizedText = value;
@@ -372,8 +378,10 @@ async function fillSimpleRomanizedText(
   };
 
   if (lyrics.type === "Static") {
-    for (const line of lyrics.lines) fill(line, line.text);
+    for (const line of lyrics.lines) await fill(line, line.text);
     console.log(`[VividLyrics] fillRomanizedText: ${lyrics.lines.length} static ${language} lines — ${fromApi} from API, ${generated} generated`);
+    const dumpLines = lyrics.lines.map((line) => [line.text, line.romanizedText ?? ""] as [string, string]);
+    dumpRomanizedLyrics(dumpLines);
     return;
   }
 
@@ -391,12 +399,27 @@ async function fillSimpleRomanizedText(
           const startsWord = index === 0 || !syllables[index - 1].IsPartOfWord;
           syllable.RomanizedStartsWord = startsWord;
           syllable.romanizedStartsWord = startsWord;
-          fill(syllable, syllable.text ?? syllable.Text ?? "");
+          await fill(syllable, syllable.text ?? syllable.Text ?? "");
         }
       }
     } else {
-      fill(item, item.text ?? item.Text ?? "");
+      await fill(item, item.text ?? item.Text ?? "");
     }
   }
   console.log(`[VividLyrics] fillRomanizedText: ${content.length} ${language} items — ${fromApi} from API, ${generated} generated`);
+
+  // Build the full-line romanized dump for debugging / comparison (matches
+  // the JP path: re-romanize the joined line so word-level spacing is right).
+  const dumpLines: Array<[string, string]> = [];
+  for (const item of content) {
+    if (item.type === "Interlude" || item.Type === "Interlude") { dumpLines.push(["", ""]); continue; }
+    const syllables = item.Lead?.Syllables ?? item.lead?.syllables ?? [];
+    if (syllables.length > 0) {
+      const fullText = syllables.map((s: any) => s.text ?? s.Text ?? "").join("");
+      dumpLines.push(fullText ? [fullText, await romanize(fullText)] : ["", ""]);
+    } else {
+      dumpLines.push([item.text ?? item.Text ?? "", item.romanizedText ?? item.RomanizedText ?? ""]);
+    }
+  }
+  dumpRomanizedLyrics(dumpLines);
 }
