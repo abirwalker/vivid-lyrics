@@ -136,10 +136,13 @@ function ensureRowCache(
   let rowTop: number | null = null;
   let rowIdx = -1;
 
-  // Use getBoundingClientRect for reliable visual row detection.
-  // offsetTop can fail when the offsetParent is far up the DOM tree
-  // (e.g. inside a scroll container with padding), reporting all chars
-  // as the same row even when they visually wrap.
+  // Words are nowrap inline-blocks, so the enclosing .Word is the stable unit
+  // for detecting visual rows. Measuring each animated letter here is wrong:
+  // two timed syllable spans that form one word can have different transforms
+  // (especially when only its first part is emphasized), making the later part
+  // look like a different row and freezing it outside the wobble window.
+  // offsetTop and offsetWidth deliberately use layout geometry, which excludes
+  // the scale/translation currently being applied by either animation engine.
   // Detect runs of consecutive indices sharing the same span (non-emphasized
   // syllables push one span per character), measure once, divide evenly.
   let i = 0;
@@ -150,9 +153,9 @@ function ensureRowCache(
       runEnd++;
     }
     const runLen = runEnd - i + 1;
-    const rect = el.getBoundingClientRect();
-    const perCharWidth = rect.width / runLen;
-    const top = rect.top;
+    const word = el.closest(".Word") as HTMLElement | null;
+    const perCharWidth = el.offsetWidth / runLen;
+    const top = word?.offsetTop ?? el.offsetTop;
     if (rowTop === null || Math.abs(top - rowTop) > 2) {
       rowIdx++;
       rowTop = top;
@@ -200,8 +203,7 @@ function splitHyphenatedWords(words: WobbleWord[]): {
   words.forEach((word, originalIdx) => {
     const shouldSplit =
       word.text.includes("-") &&
-      word.text.length > 1 &&
-      (!word.hasTrailingSpace || words.length === 1);
+      word.text.length > 1;
 
     if (shouldSplit) {
       const segments: string[] = [];
@@ -216,12 +218,23 @@ function splitHyphenatedWords(words: WobbleWord[]): {
 
       if (segments.length > 1) {
         const totalDuration = word.endTime - word.startTime;
-        const segDuration = totalDuration / segments.length;
+        // We do not have true sub-word timings for romanization inserted
+        // inside one provider syllable. Character-weighted timing is a better
+        // approximation than equal slices ("yi-xiang-dao" should not give
+        // "yi" as much time as "xiang"), and remains deterministic.
+        const weights = segments.map((segment) =>
+          Math.max(1, [...segment.replace(/-+$/, "")].length),
+        );
+        const totalWeight = weights.reduce((sum, weight) => sum + weight, 0);
+        let elapsedWeight = 0;
         segments.forEach((segText, idx) => {
+          const segmentStart = word.startTime + totalDuration * (elapsedWeight / totalWeight);
+          elapsedWeight += weights[idx];
+          const segmentEnd = word.startTime + totalDuration * (elapsedWeight / totalWeight);
           effectiveWords.push({
             text: segText,
-            startTime: word.startTime + idx * segDuration,
-            endTime: word.startTime + (idx + 1) * segDuration,
+            startTime: segmentStart,
+            endTime: segmentEnd,
             hasTrailingSpace:
               idx === segments.length - 1 ? word.hasTrailingSpace : false,
             emphasized: word.emphasized,
@@ -391,10 +404,26 @@ function fillWordWobbles(
     let w = origWobbleScratch[origIdx];
     if (w < 0) {
       const startMs = effectiveWords[i].startTime * 1000;
+      const wordDurationMs = Math.max(
+        0,
+        effectiveWords[i].endTime * 1000 - startMs,
+      );
       const t = smoothPosition - startMs;
       w = 0;
-      if (t >= 0 && t <= 750) {
-        w = t < 125 ? t / 125 : Math.max(0, 1 - (t - 125) / 625);
+      const attackMs = 125;
+      // Preserve the existing 625ms release for ordinary words. Held words
+      // receive a progressively slower fade (up to 2x), so their motion does
+      // not return to neutral near the beginning of a multi-second syllable.
+      const fadeMultiplier = 1 + clamp(
+        (wordDurationMs - 1000) / 2000,
+        0,
+        1,
+      );
+      const releaseMs = 625 * fadeMultiplier;
+      if (t >= 0 && t <= attackMs + releaseMs) {
+        w = t < attackMs
+          ? t / attackMs
+          : Math.max(0, 1 - (t - attackMs) / releaseMs);
       }
       origWobbleScratch[origIdx] = w;
     }
@@ -427,42 +456,21 @@ function computeNudge(
 
 function computeCrescendo(
   groupWord: HyphenGroupInfo,
-  sungFactor: number,
   smoothPosition: number,
-  decay: number,
-  freq: number,
 ): number {
-  const peakScale = 0.06;
-  const baseScalePerSegment = 0.012;
-  const p = sungFactor;
-  const pOut = clamp(
-    (smoothPosition - groupWord.groupEndMs) / 600,
+  const duration = Math.max(1, groupWord.groupEndMs - groupWord.groupStartMs);
+  const progress = clamp(
+    (smoothPosition - groupWord.groupStartMs) / duration,
     0,
     1,
   );
 
-  if (pOut > 0) {
-    const totalAtEnd =
-      groupWord.pos * baseScalePerSegment + peakScale;
-    return (
-      totalAtEnd *
-      Math.exp(-decay * pOut) *
-      Math.cos(freq * pOut * Math.PI) *
-      (1 - pOut)
-    );
-  }
-  if (groupWord.isLast) {
-    const base = groupWord.pos * baseScalePerSegment;
-    const springPart =
-      peakScale *
-      (1 -
-        Math.exp(-decay * p) *
-          Math.cos(freq * p * Math.PI) *
-          (1 - p));
-    return base + springPart;
-  }
-  const boost = p > 0 ? 0.02 * (1 - p) : 0;
-  return groupWord.pos * baseScalePerSegment + boost;
+  // One duration-independent swell for the complete hyphenated group. The old
+  // damped cosine was evaluated over normalized word progress, so stretching a
+  // word stretched several visible scale reversals across its entire duration.
+  // sin(pi*t) rises and returns exactly once, regardless of how long the singer
+  // holds the word, and reaches zero continuously at both ends.
+  return 0.045 * Math.sin(Math.PI * progress);
 }
 
 function computeGlow(
@@ -606,11 +614,21 @@ export function animateWobbleLine(
 
 
     const wordDistance = activeWordIdx !== -1 && wi !== -1 ? wi - activeWordIdx : null;
+    // Effective hyphen segments share one original word. Once a later segment
+    // becomes active, keep the earlier segments in the animation window too;
+    // otherwise they take the fast reset branch below and visibly snap back to
+    // scale 1 while the final segment is still being sung.
+    const sharesActiveOriginalWord =
+      activeWordIdx !== -1 &&
+      wi !== -1 &&
+      effectiveToOriginalIdx[wi] === effectiveToOriginalIdx[activeWordIdx];
     const isInWobbleWindow =
-      wordDistance !== null &&
-      wordDistance >= 0 &&
-      wi <= lastWordOnActiveRow &&
-      row === activeRow;
+      row === activeRow &&
+      (sharesActiveOriginalWord || (
+        wordDistance !== null &&
+        wordDistance >= 0 &&
+        wi <= lastWordOnActiveRow
+      ));
 
     // Bottom row freeze: characters on the bottom row stay completely
     // untouched until the first word on that row begins singing.
@@ -672,10 +690,7 @@ export function animateWobbleLine(
     if (group) {
       crescendoX = computeCrescendo(
         group,
-        sungFactor,
         smoothPosition,
-        3.5,
-        5.0,
       );
     }
 
@@ -733,8 +748,8 @@ export function animateWobbleLine(
 
 export function snapWobbleToIdle(chars: WobbleCharEl[]): void {
   for (const ch of chars) {
-    ch.span.style.scale = "";
-    ch.span.style.transform = "";
+    setCachedInline(ch.span, "scale", "1");
+    setCachedInline(ch.span, "transform", "");
     setCachedStyle(ch.span, "--char-progress", "-20%");
     setCachedStyle(ch.span, "--text-shadow-blur-radius", "4px");
     setCachedStyle(ch.span, "--text-shadow-opacity", "0%");

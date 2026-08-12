@@ -71,6 +71,7 @@ type SyllableInfo = {
 
 type BackgroundSyllableInfo = {
   span: HTMLSpanElement;
+  letters: HTMLSpanElement[];
   startTime: number;
   endTime: number;
   springs: SpringSet;
@@ -187,6 +188,7 @@ export default class LyricsRenderer {
   private lines: LineInfo[] = [];
   private unregisterFrame: (() => void) | null = null;
   private lastTimestamp = -1;
+  private lastAnimationStyle: FrameCtx["animationStyle"] | null = null;
   private destroyed = false;
   private lyricsEnded = false;
   private lastActiveIdx = -1;
@@ -309,6 +311,48 @@ export default class LyricsRenderer {
         invalidateWobbleRowCache(line.backgroundWobbleState);
       }
     }
+  }
+
+  /** Remove transforms owned by the previous animation engine before another
+   * engine writes this frame. Bounce animates syllable parents while Wobble
+   * animates their letter children, so leaving either layer behind compounds
+   * scale/translation and can permanently strand a word in its peak pose. */
+  private resetAnimationEngineState(nextStyle: FrameCtx["animationStyle"], ctx: FrameCtx): void {
+    const resetElement = (element: HTMLElement): void => {
+      setCachedInline(element, "scale", "1");
+      setCachedInline(element, "transform", "");
+      setCachedStyle(element, "--text-shadow-blur-radius", "4px");
+      setCachedStyle(element, "--text-shadow-opacity", "0%");
+    };
+
+    for (const line of this.lines) {
+      for (const syllable of line.syllables) {
+        resetElement(syllable.span);
+        for (const letter of syllable.letters) resetElement(letter.span);
+
+        if (nextStyle === "spicy-bounce" && syllable.springs) {
+          setSpringGoals(syllable.springs, 0, "NotSung", true);
+        }
+        if (nextStyle === "spicy-bounce") {
+          for (const letter of syllable.letters) {
+            if (!letter.springs) continue;
+            letter.springs.Scale.SetGoal(ctx.splines.LetterScale.at(0), true);
+            letter.springs.YOffset.SetGoal(ctx.splines.LetterYOffset.at(0), true);
+            letter.springs.Glow.SetGoal(ctx.splines.Glow.at(0), true);
+          }
+        }
+      }
+
+      for (const syllable of line.backgroundSyllables) {
+        resetElement(syllable.span);
+        if (nextStyle === "spicy-bounce") {
+          setSpringGoals(syllable.springs, 0, "NotSung", true);
+        }
+      }
+      line.settled = false;
+    }
+
+    this.invalidateAllWobbleRowCaches();
   }
 
   private applyFontSize(): void {
@@ -658,6 +702,9 @@ export default class LyricsRenderer {
             word = document.createElement("span");
             word.className = "Word";
             background.appendChild(word);
+          }
+
+          if (startsWord(syllables, index) || !wobbleWord) {
             wobbleWord = {
               text: "",
               startTime: syllableStart,
@@ -675,7 +722,6 @@ export default class LyricsRenderer {
 
           const span = document.createElement("span");
           span.className = "Syllable";
-          span.textContent = text;
           span.addEventListener("click", (e) => {
             if (!get("wordSeekEnabled")) return;
             e.stopPropagation();
@@ -683,12 +729,22 @@ export default class LyricsRenderer {
           });
           word.appendChild(span);
 
-          for (const _char of [...text]) {
+          // Wobble must own one DOM element per displayed character. The old
+          // background path pointed every character at this same syllable span,
+          // so each frame repeatedly overwrote one --char-progress value and
+          // the final character won (e.g. "Struggle" stopped around "Strugg").
+          const letters: HTMLSpanElement[] = [];
+          for (const char of [...text]) {
+            const letter = document.createElement("span");
+            letter.className = "Letter";
+            letter.textContent = char;
+            span.appendChild(letter);
+            letters.push(letter);
             backgroundWobbleChars.push({
-              span,
+              span: letter,
               charIndex: backgroundText.length,
             });
-            backgroundText += _char;
+            backgroundText += char;
           }
 
           const springs = createSpringSet();
@@ -700,6 +756,7 @@ export default class LyricsRenderer {
           });
           backgroundSyllableData.push({
             span,
+            letters,
             startTime: syllableStart,
             endTime: syllableEnd,
             springs,
@@ -763,7 +820,10 @@ export default class LyricsRenderer {
         let wCurrentWord: SyllableInfo[] | null = null;
         for (let i = 0; i < syllableData.length; i++) {
           const syllables: any[] = item.Lead.Syllables;
-          const isFirstInWord = i === 0 || !syllables[i - 1].IsPartOfWord;
+          // Match the exact boundaries used to build the visible .Word nodes.
+          // Romanized Japanese boundaries come from Lindera and intentionally
+          // differ from the provider's original-script IsPartOfWord grouping.
+          const isFirstInWord = startsWord(syllables, i);
           if (isFirstInWord) {
             wCurrentWord = [syllableData[i]];
             wWords.push({
@@ -939,6 +999,13 @@ export default class LyricsRenderer {
   private onFrame(frame: SharedFrame): void {
     if (this.destroyed) return;
 
+    if (this.lastAnimationStyle === null) {
+      this.lastAnimationStyle = frame.ctx.animationStyle;
+    } else if (this.lastAnimationStyle !== frame.ctx.animationStyle) {
+      this.resetAnimationEngineState(frame.ctx.animationStyle, frame.ctx);
+      this.lastAnimationStyle = frame.ctx.animationStyle;
+    }
+
     const currentTimestamp = frame.currentTimestamp;
 
     // If the loop was stopped because the song ended and now playback
@@ -1012,21 +1079,21 @@ export default class LyricsRenderer {
   }
 
   /** Snap a line to its initial Idle state — safe because no animation has happened yet */
-  private snapToIdle(line: LineInfo): void {
-    if (line.wobbleChars && line.wobbleState) {
+  private snapToIdle(line: LineInfo, animationStyle: FrameCtx["animationStyle"]): void {
+    if (animationStyle === "wobble" && line.wobbleChars && line.wobbleState) {
       snapWobbleToIdle(line.wobbleChars);
     } else if (line.isSyllableType && line.syllables.length > 0) {
       for (const syl of line.syllables) {
-        syl.span.style.setProperty("--char-progress", "-20%");
+        setCachedStyle(syl.span, "--char-progress", "-20%");
         for (const ltr of syl.letters) {
-          ltr.span.style.setProperty("--char-progress", "-20%");
+          setCachedStyle(ltr.span, "--char-progress", "-20%");
         }
       }
     } else if (!line.isSyllableType && line.syllables.length === 0) {
       if (line.dots) {
         for (const dot of line.dots) {
-          dot.span.style.scale = "";
-          dot.span.style.transform = "";
+          setCachedInline(dot.span, "scale", "");
+          setCachedInline(dot.span, "transform", "");
           dot.span.style.opacity = "";
         }
       }
@@ -1060,7 +1127,7 @@ export default class LyricsRenderer {
    * lines can turn Sung faster than their springs converge, the number of
    * off-screen lines still being animated keeps growing over the course of a song. */
   private finalizeLineSungInstant(line: LineInfo, ctx: FrameCtx): void {
-    if (line.wobbleChars) {
+    if (ctx.animationStyle === "wobble" && line.wobbleChars) {
       // Wobble: snap all chars to fully-sung state
       for (const ch of line.wobbleChars) {
         setCachedInline(ch.span, "scale", "1");
@@ -1076,7 +1143,7 @@ export default class LyricsRenderer {
       const letterScale = ctx.splines.LetterScale.at(1);
       const letterYOffset = ctx.splines.LetterYOffset.at(1);
       for (const syl of line.syllables) {
-        syl.span.style.setProperty("--char-progress", "120%");
+        setCachedStyle(syl.span, "--char-progress", "120%");
         if (syl.springs) {
           syl.springs.Scale.SetGoal(scale, true);
           syl.springs.YOffset.SetGoal(yOffset, true);
@@ -1088,7 +1155,7 @@ export default class LyricsRenderer {
           );
         }
         for (const ltr of syl.letters) {
-          ltr.span.style.setProperty("--char-progress", "120%");
+          setCachedStyle(ltr.span, "--char-progress", "120%");
           if (ltr.springs) {
             ltr.springs.Scale.SetGoal(letterScale, true);
             ltr.springs.YOffset.SetGoal(letterYOffset, true);
@@ -1145,7 +1212,7 @@ export default class LyricsRenderer {
 
   /** Set spring goals to final Sung position — springs will ease there naturally */
   private setSungGoals(line: LineInfo, ctx: FrameCtx): void {
-    if (line.wobbleChars) {
+    if (ctx.animationStyle === "wobble" && line.wobbleChars) {
       // Wobble: snap all chars to fully-sung state
       for (const ch of line.wobbleChars) {
         setCachedInline(ch.span, "scale", "1");
@@ -1156,12 +1223,12 @@ export default class LyricsRenderer {
       }
     } else if (line.isSyllableType && line.syllables.length > 0) {
       for (const syl of line.syllables) {
-        syl.span.style.setProperty("--char-progress", "120%");
+        setCachedStyle(syl.span, "--char-progress", "120%");
         if (syl.springs) {
           setSpringGoals(syl.springs, 1, "Sung", false);
         }
         for (const ltr of syl.letters) {
-          ltr.span.style.setProperty("--char-progress", "120%");
+          setCachedStyle(ltr.span, "--char-progress", "120%");
           if (ltr.springs) {
             ltr.springs.Scale.SetGoal(ctx.splines.Scale.at(1), false);
             ltr.springs.YOffset.SetGoal(ctx.splines.YOffset.at(1), false);
@@ -1186,8 +1253,8 @@ export default class LyricsRenderer {
   }
 
   /** Check if all springs on a line have settled (CanSleep) */
-  private areSpringsSettled(line: LineInfo): boolean {
-    if (line.wobbleChars) return true; // wobble has no springs
+  private areSpringsSettled(line: LineInfo, animationStyle: FrameCtx["animationStyle"]): boolean {
+    if (animationStyle === "wobble" && line.wobbleChars) return true;
     if (line.isSyllableType && line.syllables.length > 0) {
       for (const syl of line.syllables) {
         if (syl.springs) {
@@ -1380,7 +1447,11 @@ export default class LyricsRenderer {
             ? "Active"
             : "Sung";
 
-      setCachedStyle(syllable.span, "--char-progress", `${-20 + progress * 140}%`);
+      const progressValue = `${-20 + progress * 140}%`;
+      setCachedStyle(syllable.span, "--char-progress", progressValue);
+      for (const letter of syllable.letters) {
+        setCachedStyle(letter, "--char-progress", progressValue);
+      }
 
       if (springConfig.enabled) {
         setSpringGoals(syllable.springs, progress, state, replacePos);
@@ -1454,7 +1525,7 @@ export default class LyricsRenderer {
       this.evaluateClass(line);
 
       if (stateNow === "Idle") {
-        this.snapToIdle(line);
+        this.snapToIdle(line, ctx.animationStyle);
         this.demoteLine(line);
         return;
       }
@@ -1495,7 +1566,7 @@ export default class LyricsRenderer {
         this.demoteLine(line);
         return;
       }
-      if (this.areSpringsSettled(line)) {
+      if (this.areSpringsSettled(line, ctx.animationStyle)) {
         line.settled = true;
         this.demoteLine(line);
         return;
