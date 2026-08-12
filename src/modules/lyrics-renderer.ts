@@ -73,6 +73,7 @@ type BackgroundSyllableInfo = {
   span: HTMLSpanElement;
   startTime: number;
   endTime: number;
+  springs: SpringSet;
 };
 
 type DotInfo = {
@@ -92,6 +93,9 @@ type LineInfo = {
   state: LyricState;
   syllables: SyllableInfo[];
   backgroundSyllables: BackgroundSyllableInfo[];
+  backgroundWobbleState: WobbleLineState | null;
+  backgroundWobbleChars: WobbleCharEl[] | null;
+  backgroundWobbleWords: WobbleWord[] | null;
   isSyllableType: boolean;
   glowSpring: Spring | null;
   dots?: DotInfo[];
@@ -131,6 +135,13 @@ const USER_SCROLL_RESUME_MS = 3000;
 
 function clamp(v: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, v));
+}
+
+function oppositeAlignedValue(...values: unknown[]): boolean {
+  for (const value of values) {
+    if (typeof value === "boolean") return value;
+  }
+  return false;
 }
 
 // A spring's frequency/damping is tuned to look right at "normal" syllable/letter
@@ -217,6 +228,16 @@ export default class LyricsRenderer {
 
     this.lyricsContainer = document.createElement("div");
     this.lyricsContainer.className = "Lyrics";
+    const content = (lyrics as any).content ?? [];
+    const hasOppositeAlignedLines = content.some((item: any) =>
+      oppositeAlignedValue(
+        item.OppositeAligned,
+        item.oppositeAligned,
+        item.Lead?.OppositeAligned,
+        item.Lead?.oppositeAligned,
+      ),
+    );
+    this.lyricsContainer.classList.toggle("HasDuetLines", hasOppositeAlignedLines);
     this.scrollContainer.appendChild(this.lyricsContainer);
 
     this.applyFontSize();
@@ -274,9 +295,19 @@ export default class LyricsRenderer {
     }
   }
 
+  private applyVocalAlignment(element: HTMLElement, oppositeAligned: boolean): void {
+    const naturalRight = this.lyrics.naturalAlignment === "Right";
+    const alignRight = oppositeAligned ? !naturalRight : naturalRight;
+    element.classList.toggle("AlignRight", alignRight);
+    element.classList.toggle("AlignLeft", !alignRight);
+  }
+
   private invalidateAllWobbleRowCaches(): void {
     for (const line of this.lines) {
       if (line.wobbleState) invalidateWobbleRowCache(line.wobbleState);
+      if (line.backgroundWobbleState) {
+        invalidateWobbleRowCache(line.backgroundWobbleState);
+      }
     }
   }
 
@@ -414,6 +445,9 @@ export default class LyricsRenderer {
           state: "Idle",
           syllables: [],
           backgroundSyllables: [],
+          backgroundWobbleState: null,
+          backgroundWobbleChars: null,
+          backgroundWobbleWords: null,
           isSyllableType: false,
           glowSpring: null,
           dots,
@@ -437,9 +471,19 @@ export default class LyricsRenderer {
 
       const vocals = document.createElement("div");
       vocals.className = "Vocals Lead";
+      const leadOppositeAligned = oppositeAlignedValue(
+        item.OppositeAligned,
+        item.oppositeAligned,
+        item.Lead?.OppositeAligned,
+        item.Lead?.oppositeAligned,
+      );
+      this.applyVocalAlignment(vocals, leadOppositeAligned);
 
       const syllableData: SyllableInfo[] = [];
       const backgroundSyllableData: BackgroundSyllableInfo[] = [];
+      const backgroundWobbleChars: WobbleCharEl[] = [];
+      const backgroundWobbleWords: WobbleWord[] = [];
+      let backgroundText = "";
       const isSyllableType = !!item.Lead?.Syllables?.length;
       const startsWord = (list: any[], index: number): boolean => {
         if (index === 0) return true;
@@ -596,33 +640,80 @@ export default class LyricsRenderer {
 
         const background = document.createElement("div");
         background.className = "Vocals Background";
+        const trackOppositeAligned =
+          track.OppositeAligned ?? track.oppositeAligned;
+        this.applyVocalAlignment(
+          background,
+          trackOppositeAligned ?? leadOppositeAligned,
+        );
         let word: HTMLSpanElement | null = null;
+        let wobbleWord: WobbleWord | null = null;
         for (let index = 0; index < syllables.length; index++) {
           const syllable = syllables[index];
+          const text = displayText(syllable);
+          const syllableStart = syllable.StartTime ?? track.StartTime ?? startTime;
+          const syllableEnd = syllable.EndTime ?? track.EndTime ?? syllableStart;
+
           if (startsWord(syllables, index) || !word) {
             word = document.createElement("span");
             word.className = "Word";
             background.appendChild(word);
+            wobbleWord = {
+              text: "",
+              startTime: syllableStart,
+              endTime: syllableEnd,
+              hasTrailingSpace: true,
+              emphasized: false,
+            };
+            backgroundWobbleWords.push(wobbleWord);
           }
+
+          if (wobbleWord) {
+            wobbleWord.text += text;
+            wobbleWord.endTime = syllableEnd;
+          }
+
           const span = document.createElement("span");
           span.className = "Syllable";
-          span.textContent = displayText(syllable);
-          const syllableStart = syllable.StartTime ?? track.StartTime ?? startTime;
-          const syllableEnd = syllable.EndTime ?? track.EndTime ?? syllableStart;
+          span.textContent = text;
           span.addEventListener("click", (e) => {
             if (!get("wordSeekEnabled")) return;
             e.stopPropagation();
             Spicetify.Player.seek(syllableStart * 1000);
           });
           word.appendChild(span);
+
+          for (const _char of [...text]) {
+            backgroundWobbleChars.push({
+              span,
+              charIndex: backgroundText.length,
+            });
+            backgroundText += _char;
+          }
+
+          const springs = createSpringSet();
+          const restSplines = getActiveSplines();
+          applySpringStyles(span, {
+            scale: restSplines.Scale.at(0),
+            yOffset: restSplines.YOffset.at(0),
+            glow: restSplines.Glow.at(0),
+          });
           backgroundSyllableData.push({
             span,
             startTime: syllableStart,
             endTime: syllableEnd,
+            springs,
           });
         }
         backgroundVocals.push(background);
       }
+
+      if (backgroundWobbleWords.length > 0) {
+        backgroundWobbleWords[backgroundWobbleWords.length - 1].hasTrailingSpace = false;
+      }
+      const backgroundWobbleState = backgroundText
+        ? createWobbleState()
+        : null;
 
       // Placeholder used when this line's detailed word/syllable/letter tree is
       // virtualized out (see LyricsRenderer.applyVirtualizationWindow). Built now
@@ -731,6 +822,9 @@ export default class LyricsRenderer {
         state: "Idle",
         syllables: syllableData,
         backgroundSyllables: backgroundSyllableData,
+        backgroundWobbleState,
+        backgroundWobbleChars: backgroundText ? backgroundWobbleChars : null,
+        backgroundWobbleWords: backgroundText ? backgroundWobbleWords : null,
         isSyllableType,
         glowSpring: isSyllableType
           ? null
@@ -1215,6 +1309,11 @@ export default class LyricsRenderer {
    * transform, so giving them `will-change` just wastes a compositor
    * layer for nothing. */
   private promoteLine(line: LineInfo): void {
+    for (const syllable of line.backgroundSyllables) promoteToGPU(syllable.span);
+    if (line.backgroundWobbleChars) {
+      for (const ch of line.backgroundWobbleChars) promoteToGPU(ch.span);
+    }
+
     if (line.wobbleChars) {
       for (const ch of line.wobbleChars) promoteToGPU(ch.span);
     } else if (line.isSyllableType) {
@@ -1233,6 +1332,11 @@ export default class LyricsRenderer {
 
   /** Demote line elements from GPU layer to free compositor memory */
   private demoteLine(line: LineInfo): void {
+    for (const syllable of line.backgroundSyllables) demoteFromGPU(syllable.span);
+    if (line.backgroundWobbleChars) {
+      for (const ch of line.backgroundWobbleChars) demoteFromGPU(ch.span);
+    }
+
     if (line.wobbleChars) {
       for (const ch of line.wobbleChars) demoteFromGPU(ch.span);
     } else if (line.isSyllableType) {
@@ -1249,6 +1353,71 @@ export default class LyricsRenderer {
     }
   }
 
+  private animateBackgroundVocals(
+    line: LineInfo,
+    songTimestamp: number,
+    deltaTime: number,
+    isPlaying: boolean,
+    springConfig: SpicySpringConfig,
+    ctx: FrameCtx,
+  ): void {
+    const replacePos = this.lastTimestamp === -1;
+    const springScratch = { scale: 0, yOffset: 0, glow: 0 };
+
+    // Background tracks have independent timestamps. Animate their progress and
+    // visual effects separately from the lead line so a backing vocal can begin
+    // or end without borrowing the lead syllable's timing.
+    for (const syllable of line.backgroundSyllables) {
+      const duration = syllable.endTime - syllable.startTime;
+      const progress = duration > 0
+        ? clamp((songTimestamp - syllable.startTime) / duration, 0, 1)
+        : songTimestamp >= syllable.startTime ? 1 : 0;
+      const relativeTime = songTimestamp - syllable.startTime;
+      const state: "NotSung" | "Active" | "Sung" =
+        relativeTime < 0
+          ? "NotSung"
+          : relativeTime <= duration
+            ? "Active"
+            : "Sung";
+
+      setCachedStyle(syllable.span, "--char-progress", `${-20 + progress * 140}%`);
+
+      if (springConfig.enabled) {
+        setSpringGoals(syllable.springs, progress, state, replacePos);
+        const values = stepSprings(syllable.springs, deltaTime, springScratch);
+        applySpringStyles(syllable.span, values, ctx.glowIntensity);
+      }
+    }
+
+    if (
+      ctx.animationStyle === "wobble" &&
+      line.backgroundWobbleState &&
+      line.backgroundWobbleChars &&
+      line.backgroundWobbleWords
+    ) {
+      ensurePrecompute(
+        line.backgroundWobbleState,
+        line.backgroundWobbleWords.map((word) => word.text).join(""),
+        line.backgroundWobbleWords,
+      );
+      updateSmoothPosition(
+        line.backgroundWobbleState,
+        () => songTimestamp * 1000,
+        isPlaying,
+        0,
+      );
+      animateWobbleLine(
+        line.backgroundWobbleState,
+        line.backgroundWobbleChars,
+        line.backgroundWobbleState.smoothPosition,
+        performance.now(),
+        ctx.glowIntensity,
+        line.duration * 1000,
+        this.scrollContainer.clientWidth,
+      );
+    }
+  }
+
   private animateLine(
     line: LineInfo,
     songTimestamp: number,
@@ -1257,16 +1426,14 @@ export default class LyricsRenderer {
     springConfig: SpicySpringConfig,
     ctx: FrameCtx,
   ): void {
-    // Background tracks have their own timestamps. They intentionally do not
-    // use bounce springs (the lead must remain visually dominant), but their
-    // gradient follows each sung syllable just like a line-synced lyric.
-    for (const syllable of line.backgroundSyllables) {
-      const duration = syllable.endTime - syllable.startTime;
-      const progress = duration > 0
-        ? clamp((songTimestamp - syllable.startTime) / duration, 0, 1)
-        : songTimestamp >= syllable.startTime ? 1 : 0;
-      setCachedStyle(syllable.span, "--char-progress", `${-20 + progress * 140}%`);
-    }
+    this.animateBackgroundVocals(
+      line,
+      songTimestamp,
+      deltaTime,
+      isPlaying,
+      springConfig,
+      ctx,
+    );
 
     const replacePos = this.lastTimestamp === -1;
     const relativeTime = songTimestamp - line.startTime;
