@@ -1,4 +1,5 @@
 import type { TransformedLyrics } from "./types";
+import { dumpRomanizedLyrics } from "../tools/dump-romanized";
 import { romanizeBengali, romanizeCantonese, romanizeChinese, romanizeJP, romanizeKorean } from "../utils/romanize";
 import { romanizeThaiLine } from "../utils/romanize-th";
 import {
@@ -58,17 +59,18 @@ const API_LANG_MAP: Record<string, string> = {
   tha: "Thai", th: "Thai",
 };
 
-const SCRIPT_TESTS: [RegExp, string][] = [
-  [/[\u3040-\u309F\u30A0-\u30FF]/, "Japanese"],
-  [/[\uAC00-\uD7AF\u1100-\u11FF]/, "Korean"],
-  [/[\u0400-\u04FF]/, "Cyrillic"],
-  [/[\u0370-\u03FF]/, "Greek"],
-  [/[\u0600-\u06FF]/, "Arabic"],
-  [/[\u0590-\u05FF]/, "Hebrew"],
-  [/[\u0900-\u097F]/, "Hindi"],
-  [/[\u0980-\u09FF]/, "Bengali"],
-  [/[\u0E00-\u0E7F]/, "Thai"],
-  [/[\u4E00-\u9FFF]/, "Chinese"],
+const SCRIPT_PATTERNS: [RegExp, string][] = [
+  [/[a-zA-Z]/g, "Latin"],
+  [/[\u3040-\u309F\u30A0-\u30FF]/g, "Japanese"],
+  [/[\uAC00-\uD7AF\u1100-\u11FF]/g, "Korean"],
+  [/[\u0400-\u04FF]/g, "Cyrillic"],
+  [/[\u0370-\u03FF]/g, "Greek"],
+  [/[\u0600-\u06FF]/g, "Arabic"],
+  [/[\u0590-\u05FF]/g, "Hebrew"],
+  [/[\u0900-\u097F]/g, "Hindi"],
+  [/[\u0980-\u09FF]/g, "Bengali"],
+  [/[\u0E00-\u0E7F]/g, "Thai"],
+  [/[\u4E00-\u9FFF]/g, "Chinese"],
 ];
 
 function fromApiCode(lang?: string): string | undefined {
@@ -78,19 +80,38 @@ function fromApiCode(lang?: string): string | undefined {
 }
 
 export function fromScript(text: string): string | undefined {
-  for (const [re, name] of SCRIPT_TESTS) {
-    if (re.test(text)) return name;
+  if (!text) return undefined;
+  const counts: Record<string, number> = {};
+  for (const [re, name] of SCRIPT_PATTERNS) {
+    const matches = text.match(re);
+    if (matches) counts[name] = matches.length;
   }
-  return undefined;
+  let best: string | undefined;
+  let max = 0;
+  for (const [name, cnt] of Object.entries(counts)) {
+    if (cnt > max) {
+      max = cnt;
+      best = name;
+    }
+  }
+  if (counts["Japanese"] && counts["Japanese"] > 0 && best === "Chinese") {
+    best = "Japanese";
+  }
+  return best === "Latin" ? undefined : best;
 }
 
-// Majority vote over every lyric string instead of first-match. One stray
-// CJK char in a transliteration line can no longer poison the whole song.
+// Character-frequency script tally over every lyric string instead of line boolean testing.
+// Stray homoglyphs (e.g. Cyrillic 'е' inside English 'hеadlights') can no longer poison detection.
 function detectLanguage(response: any): string | undefined {
-  const votes: Record<string, number> = {};
+  const counts: Record<string, number> = {};
   const tally = (text: string) => {
-    const r = fromScript(text);
-    if (r) votes[r] = (votes[r] ?? 0) + 1;
+    if (!text) return;
+    for (const [re, name] of SCRIPT_PATTERNS) {
+      const matches = text.match(re);
+      if (matches) {
+        counts[name] = (counts[name] ?? 0) + matches.length;
+      }
+    }
   };
 
   for (const g of response.Content ?? []) {
@@ -102,13 +123,18 @@ function detectLanguage(response: any): string | undefined {
 
   let best: string | undefined;
   let bestCount = 0;
-  for (const [name, count] of Object.entries(votes)) {
+  for (const [name, count] of Object.entries(counts)) {
     if (count > bestCount) {
       bestCount = count;
       best = name;
     }
   }
-  return best;
+
+  if (counts["Japanese"] && counts["Japanese"] > 0 && best === "Chinese") {
+    best = "Japanese";
+  }
+
+  return best === "Latin" ? undefined : best;
 }
 
 function getEndTime(content: any[]): number {
@@ -170,15 +196,6 @@ export function adaptLyrics(response: any): TransformedLyrics {
   throw new Error(`Unknown lyrics type: ${response.Type}`);
 }
 
-function dumpRomanizedLyrics(pairs: Array<[string, string]>): void {
-  if (!pairs.length) return;
-  console.log("%c[VividLyrics][romanized-dump] ===== FULL ROMANIZED LYRICS =====", "color: #1db954; font-weight: bold");
-  for (const [original, romanized] of pairs) {
-    console.log(`${original}  ->  ${romanized}`);
-  }
-  console.log("════════════════════════════════════════════════");
-}
-
 export async function fillRomanizedText(lyrics: TransformedLyrics): Promise<void> {
   const language = lyrics.romanizedLanguage;
   if (
@@ -213,7 +230,7 @@ export async function fillRomanizedText(lyrics: TransformedLyrics): Promise<void
       if (line.romanizedText) romanizedDump.push([line.text, line.romanizedText]);
     }
     console.log(`[VividLyrics] fillRomanizedText: ${lyrics.lines.length} static lines — ${fromApi} from API, ${fromLindera} via Lindera (${Math.round(performance.now() - t0)}ms)`);
-    dumpRomanizedLyrics(romanizedDump);
+    dumpRomanizedLyrics(romanizedDump, "Japanese");
     return;
   }
 
@@ -352,7 +369,7 @@ export async function fillRomanizedText(lyrics: TransformedLyrics): Promise<void
     }
   }
 
-  dumpRomanizedLyrics(romanizedDump);
+  dumpRomanizedLyrics(romanizedDump, "Japanese");
 }
 
 /** Fill non-Japanese romanization without changing the provider's syllable timing. */
@@ -382,7 +399,7 @@ async function fillSimpleRomanizedText(
     for (const line of lyrics.lines) await fill(line, line.text);
     console.log(`[VividLyrics] fillRomanizedText: ${lyrics.lines.length} static ${language} lines — ${fromApi} from API, ${generated} generated`);
     const dumpLines = lyrics.lines.map((line) => [line.text, line.romanizedText ?? ""] as [string, string]);
-    dumpRomanizedLyrics(dumpLines);
+    dumpRomanizedLyrics(dumpLines, language);
     return;
   }
 
@@ -422,5 +439,5 @@ async function fillSimpleRomanizedText(
       dumpLines.push([item.text ?? item.Text ?? "", item.romanizedText ?? item.RomanizedText ?? ""]);
     }
   }
-  dumpRomanizedLyrics(dumpLines);
+  dumpRomanizedLyrics(dumpLines, language);
 }
