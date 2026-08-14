@@ -21,9 +21,10 @@ export function toggleRomanize(): void {
 }
 
 export function resetRomanize(canRomanize: boolean): void {
+  const changed = hasRomanizedText !== canRomanize || showRomanized !== canRomanize;
   hasRomanizedText = canRomanize;
   showRomanized = canRomanize;
-  emit("romanize:change", showRomanized);
+  if (changed) emit("romanize:change", showRomanized);
 }
 
 export function onRomanizeChange(cb: (show: boolean) => void): () => void {

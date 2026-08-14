@@ -35,8 +35,10 @@ let body: HTMLDivElement | null = null;
 let headerActions: HTMLDivElement | null = null;
 let renderer: LyricsRenderer | null = null;
 let currentLyrics: TransformedLyrics | null = null;
+let mountedLyrics: TransformedLyrics | null = null;
 let romanizeUnsub: (() => void) | null = null;
 let swapTimer: ReturnType<typeof setTimeout> | undefined;
+let syncingLyricsUpdate = false;
 
 function getVisible(): boolean {
   return storage.get("CardLyricsVisible") !== "false";
@@ -153,6 +155,7 @@ function clearBody(): void {
   if (!body) return;
   card?.classList.remove("vl-card-no-lyrics");
   destroyRenderer();
+  mountedLyrics = null;
   body.innerHTML = "";
 }
 
@@ -161,7 +164,7 @@ function populateBody(lyrics: TransformedLyrics): void {
 
   if (lyrics.type === "Static") {
     const scroll = document.createElement("div");
-    scroll.className = "LyricsScrollContainer";
+    scroll.className = "LyricsScrollContainer VL-StaticLyricsScroll";
     scroll.style.setProperty("--vl-font-size", String(get("fontSize") / 100));
     const showRomanized = getRomanize();
     for (const line of lyrics.lines) {
@@ -186,6 +189,8 @@ function populateBody(lyrics: TransformedLyrics): void {
       renderer.appendCredits(credits);
     }
   }
+
+  mountedLyrics = lyrics;
 }
 
 export function setLyricsVisibility(visible: boolean): void {
@@ -260,17 +265,25 @@ function ensureInDOM(): void {
   if (!card) return;
   if (card.parentElement) return;
   const anchor = document.querySelector(ANCHOR) ?? document.querySelector(ANCHOR_FALLBACK);
-  if (anchor) anchor.after(card);
+  if (anchor) {
+    card.classList.add("vl-card-entering");
+    anchor.after(card);
+  }
 }
 
 function onLyricsUpdate(lyrics: TransformedLyrics | null) {
   currentLyrics = lyrics;
 
-  if (lyrics) {
-    const canRomanize = !!(lyrics.romanizedLanguage && lyrics.romanizedLanguage !== "Latin");
-    resetRomanize(canRomanize);
-  } else if (!isLyricsLoading()) {
-    resetRomanize(false);
+  syncingLyricsUpdate = true;
+  try {
+    if (lyrics) {
+      const canRomanize = !!(lyrics.romanizedLanguage && lyrics.romanizedLanguage !== "Latin");
+      resetRomanize(canRomanize);
+    } else if (!isLyricsLoading()) {
+      resetRomanize(false);
+    }
+  } finally {
+    syncingLyricsUpdate = false;
   }
 
   if (!getVisible()) return;
@@ -319,7 +332,7 @@ async function onSongChange() {
 
   const lyrics = await loadPromise;
   // If loadLyrics returned cached lyrics without emitting, update UI directly
-  if (lyrics && getVisible()) {
+  if (lyrics && getVisible() && mountedLyrics !== lyrics) {
     onLyricsUpdate(lyrics);
   }
 }
@@ -351,7 +364,10 @@ function observeNPV() {
       lyricsUnsub = onLyricsChange((lyrics) => onLyricsUpdate(lyrics));
       romanizeUnsub = onRomanizeChange(() => {
         updateRomanizeBtn();
-        if (currentLyrics && getVisible()) {
+        // resetRomanize() runs synchronously inside onLyricsUpdate(). That
+        // update already rebuilds the body below, so rebuilding here as well
+        // creates a second full renderer (especially expensive for CJK text).
+        if (!syncingLyricsUpdate && currentLyrics && getVisible()) {
           clearBody();
           populateBody(currentLyrics);
         }
@@ -365,6 +381,7 @@ function observeNPV() {
           key !== "cardHeight" &&
           key !== "cardScrollMode" &&
           key !== "centeredTextCard" &&
+          key !== "animationStyle" &&
           key !== "romanization"
         ) {
           return;
@@ -396,6 +413,7 @@ function observeNPV() {
         romanizeUnsub?.();
         settingsUnsub();
         destroyRenderer();
+        mountedLyrics = null;
         card?.remove();
         card = null;
         header = null;

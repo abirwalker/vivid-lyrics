@@ -4,10 +4,37 @@
     --vl-text-dim: rgba(255, 255, 255, 0.35);
     position: relative;
     container-type: inline-size;
+    // A SimpleBar host must not become a scroll container itself. Declaring
+    // only overflow-x:hidden makes the computed overflow-y value `auto`, which
+    // creates a second native vertical scrollbar around SimpleBar.
+    overflow: hidden !important;
+    max-width: 100%;
 
     .simplebar-content-wrapper {
-        overflow: hidden auto;
+        overflow: hidden auto !important;
+        overflow-x: hidden !important;
+        scrollbar-width: none !important;
+        -ms-overflow-style: none !important;
         will-change: transform;
+
+        &::-webkit-scrollbar {
+            display: none !important;
+            width: 0 !important;
+            height: 0 !important;
+        }
+    }
+
+    .simplebar-content {
+        overflow-x: clip !important;
+        max-width: 100%;
+    }
+
+    .simplebar-track.simplebar-horizontal {
+        display: none !important;
+        visibility: hidden !important;
+        height: 0 !important;
+        pointer-events: none !important;
+        opacity: 0 !important;
     }
 
     .simplebar-track.simplebar-vertical {
@@ -70,6 +97,9 @@ html.vl-centered-text .VividLyrics-FullscreenContent .VL-FS-Line,
     font-size: calc(var(--vl-default-font-size) * var(--vl-font-size, 1));
     line-height: 1.1818181818;
     padding: 0 4px;
+    max-width: 100%;
+    box-sizing: border-box;
+    overflow-x: clip;
 }
 
 #VividLyrics-MainPage .Lyrics {
@@ -79,6 +109,11 @@ html.vl-centered-text .VividLyrics-FullscreenContent .VL-FS-Line,
 .VocalsGroup {
     display: block;
     width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    word-break: normal;
     background: none !important;
     border: none !important;
     padding: 0 !important;
@@ -160,6 +195,9 @@ html.vl-centered-text .VividLyrics-FullscreenContent .VL-FS-Line,
     font-size: inherit;
     font-weight: 700;
     max-width: 100%;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    word-break: normal;
 
     &.AlignLeft {
         justify-content: flex-start;
@@ -185,6 +223,8 @@ html.vl-centered-text .VividLyrics-FullscreenContent .VL-FS-Line,
 
 .Lyric {
     display: inline;
+    overflow-wrap: anywhere;
+    word-break: normal;
 
     &.Synced {
         background-image: linear-gradient(
@@ -209,7 +249,9 @@ html.vl-centered-text .VividLyrics-FullscreenContent .VL-FS-Line,
     &.Line {
         display: inline;
         vertical-align: baseline;
-        white-space: pre-wrap;
+        white-space: normal;
+        overflow-wrap: anywhere;
+        word-break: normal;
     }
 
     &.BackgroundVocal {
@@ -227,11 +269,15 @@ html.vl-centered-text .VividLyrics-FullscreenContent .VL-FS-Line,
     display: inline;
     color: var(--vl-text-dim, inherit);
     overflow-wrap: anywhere;
+    word-break: break-word;
 }
 
 .Word {
     display: inline-block;
-    white-space: nowrap;
+    white-space: normal;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    word-break: normal;
     margin-right: 0.25em;
 
     &:last-child {
@@ -242,6 +288,10 @@ html.vl-centered-text .VividLyrics-FullscreenContent .VL-FS-Line,
 .Syllable {
     display: inline-block;
     cursor: pointer;
+    max-width: 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: normal;
     background-image: linear-gradient(
         90deg,
         var(--vl-text-highlight) var(--char-progress, -20%),

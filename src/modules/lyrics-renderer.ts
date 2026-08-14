@@ -230,6 +230,8 @@ export default class LyricsRenderer {
   private lines: LineInfo[] = [];
   private unregisterFrame: (() => void) | null = null;
   private lastTimestamp = -1;
+  private lastPausedTimestamp = -1;
+  private lastPausedVisualKey: string | null = null;
   private lastAnimationStyle: FrameCtx["animationStyle"] | null = null;
   private destroyed = false;
   private lyricsEnded = false;
@@ -289,7 +291,8 @@ export default class LyricsRenderer {
     parentContainer.appendChild(this.scrollContainer);
 
     this.simpleBar = new SimpleBar(this.scrollContainer, { autoHide: false });
-    this.lyricsContainer.style.paddingBottom = "3em";
+    this.lyricsContainer.style.paddingBottom =
+      viewMode === "card" ? "1em" : "3em";
     this.cacheLayoutPositions();
 
     if (lyrics.type !== "Static") {
@@ -450,24 +453,10 @@ export default class LyricsRenderer {
 
   private buildLines(): void {
     const showRomanized = getRomanize();
-    // Every syllable is split into per-letter spans unconditionally (not
-    // gated on the current animationStyle). buildLines() only runs once,
-    // at construction, so baking the DOM structure to whatever mode was
-    // active *at that moment* meant switching modes live (without a full
-    // remount) left the DOM out of sync with the per-frame animation logic
-    // (which reads the live setting every frame in render-loop.ts). That
-    // desync is what caused wobble's char-progress to be all-or-nothing
-    // after a mode switch, and — the other direction — bounce mode giving
-    // every syllable its own per-letter spring bounce/glow instead of only
-    // emphasized ones.
-    //
-    // Splitting is now permanent and mode-independent; only the *spring*
-    // (scale/glow bounce) is exclusive to emphasized syllables — see the
-    // `emphasized` check below, which leaves `springs: null` on the letters
-    // of non-emphasized syllables. Every animation site in this file already
-    // gates its per-letter spring application on `ltr.springs` being
-    // truthy, so non-emphasized syllables naturally get no bounce, just the
-    // (harmless, desired) per-letter --char-progress sweep.
+    const initialAnimationStyle = get("animationStyle");
+    // Wobble needs one element per character. Bounce only needs that detail
+    // for emphasized syllables; splitting every romanized character greatly
+    // increases paint cost. Views rebuild when animationStyle changes.
     if (this.lyrics.type === "Static") {
       for (const line of this.lyrics.lines) {
         const group = document.createElement("div");
@@ -632,7 +621,10 @@ export default class LyricsRenderer {
 
             const letters: LetterInfo[] = [];
 
-            if (textLen > 0) {
+            if (
+              textLen > 0 &&
+              (initialAnimationStyle === "wobble" || emphasized)
+            ) {
               const lettersArr = [...text];
               const letterDuration = sDuration / lettersArr.length;
 
@@ -674,6 +666,8 @@ export default class LyricsRenderer {
                   springs: ltrSprings,
                 });
               }
+            } else {
+              span.textContent = text;
             }
 
             wordSpan.appendChild(span);
@@ -849,17 +843,21 @@ export default class LyricsRenderer {
           // so each frame repeatedly overwrote one --char-progress value and
           // the final character won (e.g. "Struggle" stopped around "Strugg").
           const letters: HTMLSpanElement[] = [];
-          for (const char of [...text]) {
-            const letter = document.createElement("span");
-            letter.className = "Letter";
-            letter.textContent = char;
-            span.appendChild(letter);
-            letters.push(letter);
-            backgroundWobbleChars.push({
-              span: letter,
-              charIndex: backgroundText.length,
-            });
-            backgroundText += char;
+          if (initialAnimationStyle === "wobble") {
+            for (const char of text) {
+              const letter = document.createElement("span");
+              letter.className = "Letter";
+              letter.textContent = char;
+              span.appendChild(letter);
+              letters.push(letter);
+              backgroundWobbleChars.push({
+                span: letter,
+                charIndex: backgroundText.length,
+              });
+              backgroundText += char;
+            }
+          } else {
+            span.textContent = text;
           }
 
           const springs = createSpringSet();
@@ -931,7 +929,11 @@ export default class LyricsRenderer {
       let wobbleChars: WobbleCharEl[] | null = null;
       let wobbleWords: WobbleWord[] | null = null;
       let wobbleState: WobbleLineState | null = null;
-      if (isSyllableType && syllableData.length > 0) {
+      if (
+        initialAnimationStyle === "wobble" &&
+        isSyllableType &&
+        syllableData.length > 0
+      ) {
         // Reconstruct words from syllable groups (mirrors the words[] loop above)
         const wWords: WobbleWord[] = [];
         let wCurrentWord: SyllableInfo[] | null = null;
@@ -1129,6 +1131,35 @@ export default class LyricsRenderer {
     }
 
     const currentTimestamp = frame.currentTimestamp;
+    const isPlaying = frame.isPlaying;
+
+    // Spotify's progress timestamp stops while paused, but the shared RAF loop
+    // intentionally remains available for instant resume. Render that frozen
+    // position once, then avoid re-running lyric animation, layout reads, blur,
+    // virtualization, and scrolling on every display frame. Settings that
+    // affect the frozen visual produce a new key and are still applied once.
+    if (!isPlaying) {
+      const pausedVisualKey = [
+        frame.ctx.animationStyle,
+        frame.ctx.glowIntensity,
+        frame.ctx.blurEnabled,
+        frame.ctx.blurStrengthMul,
+        get("springMode"),
+      ].join(":");
+      const timestampUnchanged =
+        this.lastPausedTimestamp >= 0 &&
+        Math.abs(currentTimestamp - this.lastPausedTimestamp) < 0.02;
+
+      if (timestampUnchanged && pausedVisualKey === this.lastPausedVisualKey) {
+        return;
+      }
+
+      this.lastPausedTimestamp = currentTimestamp;
+      this.lastPausedVisualKey = pausedVisualKey;
+    } else {
+      this.lastPausedTimestamp = -1;
+      this.lastPausedVisualKey = null;
+    }
 
     // If the loop was stopped because the song ended and now playback
     // has moved backward, re-activate.
@@ -1137,7 +1168,6 @@ export default class LyricsRenderer {
     }
 
     const deltaTime = frame.deltaTime;
-    const isPlaying = frame.isPlaying;
     const skipped =
       this.lastTimestamp >= 0 &&
       Math.abs(currentTimestamp - this.lastTimestamp) > 0.5;
@@ -2208,5 +2238,19 @@ export default class LyricsRenderer {
 
   public appendCredits(creditsEl: HTMLElement): void {
     this.lyricsContainer.appendChild(creditsEl);
+
+    // Credits are appended after SimpleBar and the smooth scroller have already
+    // measured the lyric tree. Refresh both ranges once the new node has laid
+    // out so the final credit line and bottom padding remain reachable.
+    requestAnimationFrame(() => {
+      if (this.destroyed || !this.simpleBar) return;
+      this.simpleBar.recalculate();
+      const scrollEl = this.simpleBar.getScrollElement();
+      this.cachedContainerHeight = scrollEl.clientHeight;
+      this.cachedMaxScroll = Math.max(
+        0,
+        scrollEl.scrollHeight - scrollEl.clientHeight,
+      );
+    });
   }
 }

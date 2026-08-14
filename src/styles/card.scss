@@ -9,8 +9,9 @@
     max-height: var(--vl-card-height, 340px);
     box-sizing: border-box;
 
+    &.vl-card-expanded,
     &.vl-card-no-lyrics {
-        height: var(--vl-card-height, 340px);
+        height: var(--vl-card-height, 340px) !important;
     }
     background-color: var(
         --background-tinted-base,
@@ -19,10 +20,14 @@
     border-radius: 8px !important;
     padding: 16px !important;
     position: relative;
-    overflow: hidden;
+    overflow: hidden !important;
     color: var(--text-base, #fff) !important;
     font-family: var(--encore-body-font-stack, v.$font) !important;
     z-index: 2;
+
+    &.vl-card-entering {
+        animation: vl-card-enter 140ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+    }
 
     .VL-CardHeader {
         display: flex !important;
@@ -34,6 +39,9 @@
         min-height: 25px;
         position: relative;
         z-index: 10;
+        contain: layout;
+        transform: translateZ(0);
+        backface-visibility: hidden;
     }
 
     .VL-CardTitle {
@@ -211,12 +219,79 @@
 
     .VL-LyricsBody {
         flex: 1;
-        overflow: hidden;
+        overflow: hidden !important;
         display: flex;
         flex-direction: column;
         min-height: 0;
         margin: -16px -16px -16px -16px;
         padding: 32px 16px 2px 16px;
+        contain: layout paint;
+        isolation: isolate;
+
+        .LyricsScrollContainer {
+            flex: 1;
+            min-height: 0;
+        }
+
+        // Use SimpleBar's real scroll element as the card's sole scroll owner.
+        // Its native scrollbar stays synchronized with both manual input and
+        // the renderer's programmatic scrollTop updates; the separate thin
+        // SimpleBar track remains hidden below.
+        .simplebar-content-wrapper {
+            overflow-x: hidden !important;
+            overflow-y: auto !important;
+            overscroll-behavior-y: contain;
+            scrollbar-width: auto !important;
+            -ms-overflow-style: auto !important;
+
+            &::-webkit-scrollbar {
+                display: block !important;
+                width: 10px !important;
+                height: 0 !important;
+            }
+
+            &::-webkit-scrollbar-track {
+                background: transparent;
+            }
+
+            &::-webkit-scrollbar-thumb {
+                background: rgba(255, 255, 255, 0.28);
+                border: 3px solid transparent;
+                border-radius: 999px;
+                background-clip: padding-box;
+            }
+        }
+
+        .simplebar-track {
+            display: none !important;
+        }
+
+        // Static lyrics do not instantiate SimpleBar, so their host itself is
+        // the single synchronized card viewport.
+        .VL-StaticLyricsScroll {
+            overflow-x: hidden !important;
+            overflow-y: auto !important;
+            overscroll-behavior-y: contain;
+            scrollbar-width: auto !important;
+            -ms-overflow-style: auto !important;
+
+            &::-webkit-scrollbar {
+                display: block !important;
+                width: 10px !important;
+                height: 0 !important;
+            }
+
+            &::-webkit-scrollbar-track {
+                background: transparent;
+            }
+
+            &::-webkit-scrollbar-thumb {
+                background: rgba(255, 255, 255, 0.28);
+                border: 3px solid transparent;
+                border-radius: 999px;
+                background-clip: padding-box;
+            }
+        }
     }
 
     .VL-StatusText {
@@ -268,5 +343,23 @@
 
     .VL-CardFooter {
         display: none;
+    }
+}
+
+@keyframes vl-card-enter {
+    from {
+        opacity: 0;
+        transform: translateY(8px) scale(0.985);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #VividLyrics-Card.vl-card-entering {
+        animation: none;
     }
 }
