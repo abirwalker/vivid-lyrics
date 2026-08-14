@@ -145,6 +145,39 @@ function oppositeAlignedValue(...values: unknown[]): boolean {
   return false;
 }
 
+function parseLineSegments(text: string): { text: string; isBackground: boolean }[] {
+  if (!text) return [];
+  const segments: { text: string; isBackground: boolean }[] = [];
+  let lastIndex = 0;
+
+  // Match (round), （full-width）, [square], 【cjk】, ［full-width square］
+  const BRACKET_REGEX = /([(（【［\[][^)）】］\]]+[)）】］\]])/g;
+
+  for (const match of text.matchAll(BRACKET_REGEX)) {
+    const matchIndex = match.index;
+    if (matchIndex > lastIndex) {
+      segments.push({
+        text: text.slice(lastIndex, matchIndex),
+        isBackground: false,
+      });
+    }
+    segments.push({
+      text: match[0],
+      isBackground: true,
+    });
+    lastIndex = matchIndex + match[0].length;
+  }
+
+  if (lastIndex < text.length) {
+    segments.push({
+      text: text.slice(lastIndex),
+      isBackground: false,
+    });
+  }
+
+  return segments;
+}
+
 // A spring's frequency/damping is tuned to look right at "normal" syllable/letter
 // speed. When a syllable or letter is much shorter than that (fast words), its own
 // goal sweeps from NotSung to Sung faster than the spring can physically travel,
@@ -523,6 +556,7 @@ export default class LyricsRenderer {
       );
       this.applyVocalAlignment(vocals, leadOppositeAligned);
 
+      const backgroundVocals: HTMLDivElement[] = [];
       const syllableData: SyllableInfo[] = [];
       const backgroundSyllableData: BackgroundSyllableInfo[] = [];
       const backgroundWobbleChars: WobbleCharEl[] = [];
@@ -659,24 +693,40 @@ export default class LyricsRenderer {
           vocals.appendChild(wordSpan);
         }
       } else {
-        const text = showRomanized ? (item.RomanizedText ?? item.romanizedText ?? item.Text ?? "") : (item.Text ?? "");
-        if (!text) continue;
-        const span = document.createElement("span");
-        span.className = "Lyric Synced Line";
-        span.textContent = text;
-        vocals.appendChild(span);
+        const fullText = showRomanized ? (item.RomanizedText ?? item.romanizedText ?? item.Text ?? "") : (item.Text ?? "");
+        if (!fullText) continue;
+
+        const segments = parseLineSegments(fullText);
+        const isAllBackground = segments.length > 0 && segments.every((s) => s.isBackground);
+
+        if (isAllBackground) {
+          vocals.className = "Vocals Background";
+          const span = document.createElement("span");
+          span.className = "Lyric Synced Line";
+          span.textContent = fullText;
+          vocals.appendChild(span);
+        } else {
+          for (const seg of segments) {
+            const span = document.createElement("span");
+            span.className = seg.isBackground
+              ? "Lyric Synced Line BackgroundVocal"
+              : "Lyric Synced Line";
+            span.textContent = seg.text;
+            vocals.appendChild(span);
+          }
+        }
+
         group.classList.add("LineSynced");
       }
 
       const lyricSpanCache = isSyllableType
         ? null
-        : (vocals.querySelector(".Lyric.Synced") as HTMLElement | null);
+        : (group.querySelector(".Lyric.Synced") as HTMLElement | null);
 
       // Background vocals are independent timed tracks. Render them as their
       // own subdued rows instead of folding them into the lead's word tree;
       // that keeps the lead animation/virtualizer fast and makes every track
       // available in both original and romanized views.
-      const backgroundVocals: HTMLDivElement[] = [];
       const backgroundTracks: any[] = item.Background ?? item.background ?? [];
       for (const track of backgroundTracks) {
         const syllables: any[] = track.Syllables ?? track.syllables ?? [];
@@ -1793,27 +1843,31 @@ export default class LyricsRenderer {
           setCachedStyle(dot.span, "--text-shadow-opacity", `${v.glow * 90}%`);
         }
       }
-      const lyricSpan = line.lyricSpanCache;
-      if (lyricSpan && line.duration > 0) {
+      if (line.duration > 0) {
         const lineProgress = clamp(relativeTime / line.duration, 0, 1);
         const gradientPos = lineProgress * 100;
-        setCachedStyle(lyricSpan, "--line-progress", `${gradientPos}%`);
+        setCachedStyle(line.container, "--line-progress", `${gradientPos}%`);
 
-        if ((springConfig.enabled || ctx.animationStyle === "wobble") && line.glowSpring) {
-          const gi = ctx.glowIntensity;
-          const targetGlow = ctx.splines.LineGlow.at(lineProgress);
-          line.glowSpring.SetGoal(targetGlow, replacePos);
-          const currentGlow = line.glowSpring.Step(deltaTime);
-          setCachedStyle(
-            lyricSpan,
-            "--text-shadow-blur-radius",
-            `${4 + 8 * currentGlow * gi}px`,
-          );
-          setCachedStyle(
-            lyricSpan,
-            "--text-shadow-opacity",
-            `${Math.min(currentGlow * 50 * gi, 100)}%`,
-          );
+        const lyricSpan = line.lyricSpanCache;
+        if (lyricSpan) {
+          setCachedStyle(lyricSpan, "--line-progress", `${gradientPos}%`);
+
+          if ((springConfig.enabled || ctx.animationStyle === "wobble") && line.glowSpring) {
+            const gi = ctx.glowIntensity;
+            const targetGlow = ctx.splines.LineGlow.at(lineProgress);
+            line.glowSpring.SetGoal(targetGlow, replacePos);
+            const currentGlow = line.glowSpring.Step(deltaTime);
+            setCachedStyle(
+              lyricSpan,
+              "--text-shadow-blur-radius",
+              `${4 + 8 * currentGlow * gi}px`,
+            );
+            setCachedStyle(
+              lyricSpan,
+              "--text-shadow-opacity",
+              `${Math.min(currentGlow * 50 * gi, 100)}%`,
+            );
+          }
         }
       }
     }
