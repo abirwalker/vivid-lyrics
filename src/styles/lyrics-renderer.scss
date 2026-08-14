@@ -52,6 +52,11 @@ html.vl-centered-text #VividLyrics-MainPage .Lyrics,
 html.vl-centered-text .VividLyrics-FullscreenContent .Lyrics,
 #VividLyrics-Card.vl-card-centered .Lyrics {
     text-align: center;
+
+    .Vocals {
+        justify-content: center;
+        text-align: center;
+    }
 }
 
 html.vl-centered-text #VividLyrics-MainPage .VL-FS-Line,

@@ -307,6 +307,11 @@ function buildContent(): HTMLElement {
           (v) => set("gradientDirection", v as Settings["gradientDirection"]),
         ),
       },
+      {
+        label: "Strip Background Brackets",
+        desc: "Display backing vocals without outer parentheses (Apple Music style)",
+        control: makeToggle(s.stripBackgroundBrackets, (v) => set("stripBackgroundBrackets", v)),
+      },
     ]],
     ["Animation", [
       {

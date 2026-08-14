@@ -75,6 +75,8 @@ type BackgroundSyllableInfo = {
   startTime: number;
   endTime: number;
   springs: SpringSet;
+  springState: "NotSung" | "Active" | "Sung" | null;
+  springSettled: boolean;
 };
 
 type DotInfo = {
@@ -105,6 +107,7 @@ type LineInfo = {
   /** Cached layout positions — computed once after DOM insertion, never read from live DOM during animation */
   cachedOffsetTop: number;
   cachedHeight: number;
+  cachedVocalsHeight: number;
   /** Cached reference to the ".Lyric.Synced" span for line-synced lines — resolved once at build time, never queried per frame */
   lyricSpanCache: HTMLElement | null;
   /** Virtualization state for syllable-type lines only (word/syllable/letter trees are
@@ -176,6 +179,12 @@ function parseLineSegments(text: string): { text: string; isBackground: boolean 
   }
 
   return segments;
+}
+
+function stripOuterBrackets(text: string): string {
+  const trimmed = text.trim();
+  const match = trimmed.match(/^[(（【［\[]([\s\S]*)[)）】］\]]$/);
+  return match ? match[1].trim() : trimmed;
 }
 
 // A spring's frequency/damping is tuned to look right at "normal" syllable/letter
@@ -378,6 +387,8 @@ export default class LyricsRenderer {
 
       for (const syllable of line.backgroundSyllables) {
         resetElement(syllable.span);
+        syllable.springState = null;
+        syllable.springSettled = false;
         if (nextStyle === "spicy-bounce") {
           setSpringGoals(syllable.springs, 0, "NotSung", true);
         }
@@ -531,6 +542,7 @@ export default class LyricsRenderer {
           settled: false,
           cachedOffsetTop: 0,
           cachedHeight: 0,
+          cachedVocalsHeight: 0,
           lyricSpanCache: null,
           mounted: true,
           detailedFragment: null,
@@ -697,22 +709,70 @@ export default class LyricsRenderer {
         if (!fullText) continue;
 
         const segments = parseLineSegments(fullText);
-        const isAllBackground = segments.length > 0 && segments.every((s) => s.isBackground);
+        const isAllBackground =
+          segments.length > 0 &&
+          segments.every((s) => s.isBackground || !s.text.trim());
+        const stripBrackets = get("stripBackgroundBrackets");
 
         if (isAllBackground) {
           vocals.className = "Vocals Background";
           const span = document.createElement("span");
           span.className = "Lyric Synced Line";
-          span.textContent = fullText;
+          span.textContent = stripBrackets ? stripOuterBrackets(fullText) : fullText;
           vocals.appendChild(span);
         } else {
-          for (const seg of segments) {
+          let trailingBgIndex = segments.length;
+          while (
+            trailingBgIndex > 0 &&
+            (segments[trailingBgIndex - 1].isBackground || !segments[trailingBgIndex - 1].text.trim())
+          ) {
+            trailingBgIndex--;
+          }
+
+          const hasLead = segments
+            .slice(0, trailingBgIndex)
+            .some((s) => !s.isBackground && s.text.trim().length > 0);
+
+          if (!hasLead) {
+            trailingBgIndex = 0;
+          }
+
+          const leadSegments = segments.slice(0, trailingBgIndex);
+          const trailingBgSegments = segments
+            .slice(trailingBgIndex)
+            .filter((s) => s.isBackground);
+
+          for (let i = 0; i < leadSegments.length; i++) {
+            const seg = leadSegments[i];
+            let text = seg.text;
+            if (i === leadSegments.length - 1 && !seg.isBackground) {
+              text = text.trimEnd();
+            }
+            if (!text) continue;
+
             const span = document.createElement("span");
             span.className = seg.isBackground
               ? "Lyric Synced Line BackgroundVocal"
               : "Lyric Synced Line";
-            span.textContent = seg.text;
+            span.textContent = seg.isBackground && stripBrackets
+              ? stripOuterBrackets(text)
+              : text;
             vocals.appendChild(span);
+          }
+
+          if (trailingBgSegments.length > 0) {
+            const bgDiv = document.createElement("div");
+            bgDiv.className = "Vocals Background";
+            this.applyVocalAlignment(bgDiv, leadOppositeAligned);
+            for (let i = 0; i < trailingBgSegments.length; i++) {
+              const seg = trailingBgSegments[i];
+              const bgSpan = document.createElement("span");
+              bgSpan.className = "Lyric Synced Line";
+              const text = stripBrackets ? stripOuterBrackets(seg.text) : seg.text;
+              bgSpan.textContent = i > 0 ? ` ${text}` : text;
+              bgDiv.appendChild(bgSpan);
+            }
+            backgroundVocals.push(bgDiv);
           }
         }
 
@@ -742,9 +802,14 @@ export default class LyricsRenderer {
         );
         let word: HTMLSpanElement | null = null;
         let wobbleWord: WobbleWord | null = null;
+        const stripBrackets = get("stripBackgroundBrackets");
         for (let index = 0; index < syllables.length; index++) {
           const syllable = syllables[index];
-          const text = displayText(syllable);
+          let text = displayText(syllable);
+          if (stripBrackets) {
+            if (index === 0) text = text.replace(/^[(（【［\[]/, "");
+            if (index === syllables.length - 1) text = text.replace(/[)）】］\]]$/, "");
+          }
           const syllableStart = syllable.StartTime ?? track.StartTime ?? startTime;
           const syllableEnd = syllable.EndTime ?? track.EndTime ?? syllableStart;
 
@@ -810,6 +875,8 @@ export default class LyricsRenderer {
             startTime: syllableStart,
             endTime: syllableEnd,
             springs,
+            springState: null,
+            springSettled: false,
           });
         }
         backgroundVocals.push(background);
@@ -942,6 +1009,7 @@ export default class LyricsRenderer {
         settled: false,
         cachedOffsetTop: 0,
         cachedHeight: 0,
+        cachedVocalsHeight: 0,
         lyricSpanCache,
         mounted: true,
         detailedFragment: null,
@@ -964,6 +1032,7 @@ export default class LyricsRenderer {
     for (const line of this.lines) {
       line.cachedOffsetTop = line.container.offsetTop;
       line.cachedHeight = line.container.offsetHeight;
+      line.cachedVocalsHeight = line.vocals.offsetHeight;
     }
   }
 
@@ -971,10 +1040,13 @@ export default class LyricsRenderer {
    * Used to center the virtualization window even during interludes/gaps where no
    * line is strictly "Active". */
   private computeReferenceIndex(timestamp: number): number {
+    if (this.lines.length === 0) return -1;
+    let referenceIndex = 0;
     for (let i = 0; i < this.lines.length; i++) {
-      if (this.lines[i].endTime > timestamp) return i;
+      if (this.lines[i].startTime > timestamp) break;
+      referenceIndex = i;
     }
-    return this.lines.length - 1;
+    return referenceIndex;
   }
 
   /** Attach a syllable-type line's detailed word/syllable/letter tree back into
@@ -1001,7 +1073,7 @@ export default class LyricsRenderer {
     while (line.vocals.firstChild) {
       line.detailedFragment.appendChild(line.vocals.firstChild);
     }
-    line.vocals.style.minHeight = `${line.cachedHeight}px`;
+    line.vocals.style.minHeight = `${line.cachedVocalsHeight}px`;
     line.vocals.appendChild(line.placeholder);
     line.mounted = false;
   }
@@ -1107,15 +1179,15 @@ export default class LyricsRenderer {
 
     this.updateBlur(frame.ctx);
 
- 		if (this.scroller) {
- 			this.programmaticScroll = true;
- 			if (hasActive) {
- 				this.scroller.update(deltaTime);
- 			} else if (!this.autoScrollBlocked) {
- 				this.scroller.snapToTarget();
- 			}
- 			this.programmaticScroll = false;
- 		}
+		if (this.scroller) {
+			this.programmaticScroll = true;
+			if (hasActive) {
+				this.scroller.update(deltaTime);
+			} else if (!this.autoScrollBlocked) {
+				this.scroller.snapToTarget();
+			}
+			this.programmaticScroll = false;
+		}
 
 		if (skipped) {
       this.lyricsEnded = false;
@@ -1478,8 +1550,21 @@ export default class LyricsRenderer {
     springConfig: SpicySpringConfig,
     ctx: FrameCtx,
   ): void {
+    if (line.backgroundSyllables.length === 0) return;
+
     const replacePos = this.lastTimestamp === -1;
     const springScratch = { scale: 0, yOffset: 0, glow: 0 };
+
+    // Background rows stay mounted when the lead's detailed DOM is virtualized.
+    // Do not keep their springs alive when the complete line is far outside the
+    // visible scroll window. If it becomes visible later, the timestamp-derived
+    // state below restores the correct frame immediately.
+    if (
+      ctx.animationStyle === "spicy-bounce" &&
+      !this.isLineNearViewport(line)
+    ) {
+      return;
+    }
 
     // Background tracks have independent timestamps. Animate their progress and
     // visual effects separately from the lead line so a backing vocal can begin
@@ -1497,16 +1582,59 @@ export default class LyricsRenderer {
             ? "Active"
             : "Sung";
 
-      const progressValue = `${-20 + progress * 140}%`;
-      setCachedStyle(syllable.span, "--char-progress", progressValue);
-      for (const letter of syllable.letters) {
-        setCachedStyle(letter, "--char-progress", progressValue);
+      // Bounce mode used to step every background spring on every frame for
+      // the whole song, including springs that had been idle or sung for
+      // minutes. Stable states now cost nothing after their final frame.
+      if (
+        ctx.animationStyle === "spicy-bounce" &&
+        state !== "Active" &&
+        syllable.springState === state &&
+        syllable.springSettled
+      ) {
+        continue;
       }
 
-      if (springConfig.enabled) {
-        setSpringGoals(syllable.springs, progress, state, replacePos);
+      const progressValue = `${-20 + progress * 140}%`;
+      setCachedStyle(syllable.span, "--char-progress", progressValue);
+      for (let index = 0; index < syllable.letters.length; index++) {
+        const letter = syllable.letters[index];
+        const letterProgress = ctx.animationStyle === "spicy-bounce"
+          ? clamp(progress * syllable.letters.length - index, 0, 1)
+          : progress;
+        setCachedStyle(
+          letter,
+          "--char-progress",
+          `${-20 + letterProgress * 140}%`,
+        );
+      }
+
+      if (ctx.animationStyle === "spicy-bounce" && springConfig.enabled) {
+        const previousState = syllable.springState;
+        const enteringStableState = state !== "Active" && state !== previousState;
+        const recentlyFinished =
+          state === "Sung" &&
+          previousState === "Active" &&
+          songTimestamp - syllable.endTime <= 0.25;
+        const snapToState =
+          replacePos ||
+          state === "NotSung" ||
+          (enteringStableState && !recentlyFinished);
+
+        setSpringGoals(syllable.springs, progress, state, snapToState);
         const values = stepSprings(syllable.springs, deltaTime, springScratch);
         applySpringStyles(syllable.span, values, ctx.glowIntensity);
+
+        syllable.springSettled =
+          state !== "Active" &&
+          syllable.springs.Scale.CanSleep() &&
+          syllable.springs.YOffset.CanSleep() &&
+          syllable.springs.Glow.CanSleep();
+      } else if (ctx.animationStyle === "spicy-bounce") {
+        syllable.springSettled = state !== "Active";
+      }
+
+      if (ctx.animationStyle === "spicy-bounce") {
+        syllable.springState = state;
       }
     }
 
@@ -1980,23 +2108,34 @@ export default class LyricsRenderer {
 	private scrollToActive(instant?: boolean): void {
 		if (!get("autoScroll")) return;
 
-		const activeIdx = this.lines.findIndex((l) => l.state === "Active");
+		let activeIdx = -1;
+		// BG vocal groups can overlap, leaving several lines Active at once.
+		// Follow the newest active lead; findIndex() selected the oldest group
+		// and suppressed every newer scroll target until that group finally ended.
+		for (let i = this.lines.length - 1; i >= 0; i--) {
+			if (this.lines[i].state === "Active") {
+				activeIdx = i;
+				break;
+			}
+		}
 		if (activeIdx === this.lastActiveIdx && !instant) return;
 		this.lastActiveIdx = activeIdx;
 
- 		if (activeIdx < 0) {
- 			const scrollEl = this.simpleBar!.getScrollElement();
- 			this.programmaticScroll = true;
- 			scrollEl.scrollTop = this.lyricsEnded ? scrollEl.scrollHeight : 0;
- 			this.programmaticScroll = false;
- 			return;
- 		}
+		if (activeIdx < 0) {
+			if (this.lyricsEnded) {
+				const scrollEl = this.simpleBar!.getScrollElement();
+				this.programmaticScroll = true;
+				scrollEl.scrollTop = scrollEl.scrollHeight;
+				this.programmaticScroll = false;
+			}
+			return;
+		}
 
 		const activeLine = this.lines[activeIdx];
 
 		if (this.scroller) {
 			const lineCenter =
-				activeLine.cachedOffsetTop + activeLine.cachedHeight / 2;
+				activeLine.cachedOffsetTop + activeLine.cachedVocalsHeight / 2;
 			this.scroller.setActiveLine(
 				lineCenter,
 				this.cachedContainerHeight,
@@ -2016,7 +2155,7 @@ export default class LyricsRenderer {
 		const scrollTop = scrollEl.scrollTop;
 
 		const lineRelativeTop = activeLine.cachedOffsetTop - scrollTop;
-		const lineHeight = activeLine.cachedHeight;
+		const lineHeight = activeLine.cachedVocalsHeight;
 
 		let targetTop: number;
 		if (this.viewMode === "card") {

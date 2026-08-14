@@ -25,6 +25,7 @@ export type Settings = {
   cardScrollMode: "static" | "gentle" | "active";
   wordSeekEnabled: boolean;
   scrollMode: "smooth" | "legacy";
+  stripBackgroundBrackets: boolean;
 };
 
 const defaults: Settings = {
@@ -51,6 +52,7 @@ const defaults: Settings = {
   cardScrollMode: "static",
   wordSeekEnabled: true,
   scrollMode: "smooth",
+  stripBackgroundBrackets: false,
 };
 
 let current: Settings = { ...defaults };

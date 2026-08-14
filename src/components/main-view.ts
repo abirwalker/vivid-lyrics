@@ -216,7 +216,8 @@ function open(): void {
       key !== "fontFamily" &&
       key !== "gradientDirection" &&
       key !== "scrollMode" &&
-      key !== "romanization"
+      key !== "romanization" &&
+      key !== "stripBackgroundBrackets"
     ) {
       return;
     }

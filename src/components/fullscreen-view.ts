@@ -246,7 +246,8 @@ export function setupFullscreen(): void {
       key !== "fontFamily" &&
       key !== "gradientDirection" &&
       key !== "controlsPosition" &&
-      key !== "romanization"
+      key !== "romanization" &&
+      key !== "stripBackgroundBrackets"
     ) {
       return;
     }
