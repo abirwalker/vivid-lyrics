@@ -84,6 +84,12 @@ html.vl-centered-text .VividLyrics-FullscreenContent .Lyrics,
         justify-content: center;
         text-align: center;
     }
+
+    .Interlude {
+        text-align: center !important;
+        padding-left: 0 !important;
+        padding-right: 0 !important;
+    }
 }
 
 html.vl-centered-text #VividLyrics-MainPage .VL-FS-Line,
@@ -212,11 +218,13 @@ html.vl-centered-text .VividLyrics-FullscreenContent .VL-FS-Line,
 }
 
 .Lyrics.HasDuetLines {
-    .Vocals.AlignLeft {
+    .Vocals.AlignLeft,
+    .Interlude.AlignLeft {
         padding-right: 15cqw;
     }
 
-    .Vocals.AlignRight {
+    .Vocals.AlignRight,
+    .Interlude.AlignRight {
         padding-left: 15cqw;
     }
 }
@@ -368,6 +376,16 @@ html.vl-centered-text .VividLyrics-FullscreenContent .VL-FS-Line,
 .Interlude {
     text-align: inherit;
     padding: 0;
+    box-sizing: border-box;
+    width: 100%;
+
+    &.AlignLeft {
+        text-align: start;
+    }
+
+    &.AlignRight {
+        text-align: end;
+    }
 
     .dotGroup {
         display: inline-flex;

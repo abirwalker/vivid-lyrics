@@ -421,6 +421,12 @@ export default class LyricsRenderer {
         continue;
       }
       const currStart = item.StartTime ?? item.Lead?.StartTime ?? 0;
+      const currOppositeAligned = oppositeAlignedValue(
+        item.OppositeAligned,
+        item.oppositeAligned,
+        item.Lead?.OppositeAligned,
+        item.Lead?.oppositeAligned,
+      );
       // Intro gap before first line
       if (result.length === 0) {
         if (currStart >= INTERLUDE_GAP_THRESHOLD_S) {
@@ -429,6 +435,7 @@ export default class LyricsRenderer {
             StartTime: 0 + INTERLUDE_EARLIER_BY,
             EndTime: currStart + INTERLUDE_EARLIER_BY,
             TotalTime: currStart,
+            OppositeAligned: currOppositeAligned,
           });
         }
       } else {
@@ -442,6 +449,7 @@ export default class LyricsRenderer {
               StartTime: prevEnd + INTERLUDE_EARLIER_BY,
               EndTime: currStart + INTERLUDE_EARLIER_BY,
               TotalTime: gap,
+              OppositeAligned: currOppositeAligned,
             });
           }
         }
@@ -475,7 +483,8 @@ export default class LyricsRenderer {
 
     let content = (this.lyrics as any).content ?? [];
     content = this.insertDynamicInterludes(content);
-    for (const item of content) {
+    for (let i = 0; i < content.length; i++) {
+      const item = content[i];
       const group = document.createElement("button");
       group.className = "VocalsGroup";
 
@@ -483,6 +492,25 @@ export default class LyricsRenderer {
         group.classList.add("InterludeLine");
         const interlude = document.createElement("div");
         interlude.className = "Interlude";
+        let interludeOppositeAligned = oppositeAlignedValue(
+          item.OppositeAligned,
+          item.oppositeAligned,
+        );
+        if (item.OppositeAligned === undefined && item.oppositeAligned === undefined) {
+          for (let j = i + 1; j < content.length; j++) {
+            const next = content[j];
+            if (next.Type !== "Interlude" && next.type !== "Interlude") {
+              interludeOppositeAligned = oppositeAlignedValue(
+                next.OppositeAligned,
+                next.oppositeAligned,
+                next.Lead?.OppositeAligned,
+                next.Lead?.oppositeAligned,
+              );
+              break;
+            }
+          }
+        }
+        this.applyVocalAlignment(interlude, interludeOppositeAligned);
         const dotGroup = document.createElement("div");
         dotGroup.className = "dotGroup";
         const itemStart = item.StartTime ?? 0;

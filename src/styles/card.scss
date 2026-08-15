@@ -25,10 +25,6 @@
     font-family: var(--encore-body-font-stack, v.$font) !important;
     z-index: 2;
 
-    &.vl-card-entering {
-        animation: vl-card-enter 140ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
-    }
-
     .VL-CardHeader {
         display: flex !important;
         align-items: center;
@@ -224,13 +220,20 @@
         flex-direction: column;
         min-height: 0;
         margin: -16px -16px -16px -16px;
-        padding: 32px 16px 2px 16px;
+        padding: 32px 6px 2px 6px;
         contain: layout paint;
         isolation: isolate;
 
         .LyricsScrollContainer {
             flex: 1;
             min-height: 0;
+        }
+
+        // Move the scroll/clipping edge outward without moving the content:
+        // the global .Lyrics gutter is 4px, so 6px + 14px preserves the old
+        // 16px + 4px visual position while giving glows 10px more paint room.
+        .Lyrics {
+            padding-inline: 14px;
         }
 
         // Use SimpleBar's real scroll element as the card's sole scroll owner.
@@ -269,6 +272,8 @@
         // Static lyrics do not instantiate SimpleBar, so their host itself is
         // the single synchronized card viewport.
         .VL-StaticLyricsScroll {
+            padding-inline: 10px;
+            box-sizing: border-box;
             overflow-x: hidden !important;
             overflow-y: auto !important;
             overscroll-behavior-y: contain;
@@ -343,23 +348,5 @@
 
     .VL-CardFooter {
         display: none;
-    }
-}
-
-@keyframes vl-card-enter {
-    from {
-        opacity: 0;
-        transform: translateY(8px) scale(0.985);
-    }
-
-    to {
-        opacity: 1;
-        transform: translateY(0) scale(1);
-    }
-}
-
-@media (prefers-reduced-motion: reduce) {
-    #VividLyrics-Card.vl-card-entering {
-        animation: none;
     }
 }

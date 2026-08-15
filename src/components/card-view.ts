@@ -36,7 +36,6 @@ let headerActions: HTMLDivElement | null = null;
 let renderer: LyricsRenderer | null = null;
 let currentLyrics: TransformedLyrics | null = null;
 let mountedLyrics: TransformedLyrics | null = null;
-let romanizeUnsub: (() => void) | null = null;
 let swapTimer: ReturnType<typeof setTimeout> | undefined;
 let syncingLyricsUpdate = false;
 
@@ -263,10 +262,14 @@ function showNoLyrics(): void {
 
 function ensureInDOM(): void {
   if (!card) return;
-  if (card.parentElement) return;
+  // `card.parentElement` can be non-null while still being detached from the
+  // live document (e.g. Spotify swapped out the whole wrapper subtree that
+  // used to contain both the anchor and our card). Check against the
+  // document itself, not just "has a parent", or we'd wrongly skip
+  // re-inserting a card that's floating in a detached tree.
+  if (document.body.contains(card)) return;
   const anchor = document.querySelector(ANCHOR) ?? document.querySelector(ANCHOR_FALLBACK);
   if (anchor) {
-    card.classList.add("vl-card-entering");
     anchor.after(card);
   }
 }
@@ -344,93 +347,108 @@ function suppressNativeLyrics(container: Element) {
 
 function observeNPV() {
   let current: Element | null = null;
-  let removeCb: (() => void) | null = null;
   let nativeObserver: MutationObserver | null = null;
-  let lyricsUnsub: (() => void) | null = null;
+
+  // Cheap path: the anchor node's *identity* changed (Spotify swapped the
+  // wrapper it lives in, e.g. while navigating Home/Playlists/Artists with
+  // the main view closed) but the sidebar itself is still around. We just
+  // need to re-point the native-lyrics suppressor at the new subtree and
+  // make sure our card is still physically in the document — we do NOT
+  // tear down the renderer, buttons, or listeners. This is what used to
+  // cause the hover-lag/rebuild-thrash bug: a full destroy+rebuild was
+  // firing on every such swap, up to once a second while browsing.
+  const reattach = (el: Element) => {
+    current = el;
+    suppressNativeLyrics(el.parentElement!);
+    nativeObserver?.disconnect();
+    nativeObserver = new MutationObserver(() => suppressNativeLyrics(el.parentElement!));
+    nativeObserver.observe(el.parentElement!, { childList: true });
+    ensureInDOM();
+  };
+
+  // Expensive path: the NPV sidebar itself is genuinely gone (e.g. the user
+  // closed the whole Now Playing panel). Only here do we actually tear
+  // everything down.
+  const teardown = () => {
+    clearTimeout(swapTimer);
+    nativeObserver?.disconnect();
+    nativeObserver = null;
+    destroyRenderer();
+    mountedLyrics = null;
+    card?.remove();
+    card = null;
+    header = null;
+    title = null;
+    showBtn = null;
+    expandBtn = null;
+    closeBtn = null;
+    romanizeBtn = null;
+    headerActions = null;
+    body = null;
+    current = null;
+  };
 
   const runCheck = () => {
     const el = document.querySelector(`${ANCHOR}, ${ANCHOR_FALLBACK}`);
     if (el && el !== current) {
-      if (current && removeCb) removeCb();
-      current = el;
-
-      suppressNativeLyrics(el.parentElement!);
-      nativeObserver = new MutationObserver(() => suppressNativeLyrics(el.parentElement!));
-      nativeObserver.observe(el.parentElement!, { childList: true });
-
-      const handler = () => onSongChange();
-      Spicetify.Player.addEventListener("songchange", handler);
-
-      lyricsUnsub = onLyricsChange((lyrics) => onLyricsUpdate(lyrics));
-      romanizeUnsub = onRomanizeChange(() => {
-        updateRomanizeBtn();
-        // resetRomanize() runs synchronously inside onLyricsUpdate(). That
-        // update already rebuilds the body below, so rebuilding here as well
-        // creates a second full renderer (especially expensive for CJK text).
-        if (!syncingLyricsUpdate && currentLyrics && getVisible()) {
-          clearBody();
-          populateBody(currentLyrics);
+      const firstMount = current === null;
+      reattach(el);
+      if (firstMount) {
+        onSongChange();
+        if (!getTrackUri()) {
+          setTimeout(() => {
+            if (!getTrackUri()) return;
+            onSongChange();
+          }, 1000);
         }
-      });
-      const settingsUnsub = onSettingsChange(({ key }) => {
-        if (!getVisible()) return;
-        if (
-          key !== null &&
-          key !== "fontSize" &&
-          key !== "fontFamily" &&
-          key !== "cardHeight" &&
-          key !== "cardScrollMode" &&
-          key !== "centeredTextCard" &&
-          key !== "animationStyle" &&
-          key !== "romanization"
-        ) {
-          return;
-        }
-        ensureCard();
-        card!.style.setProperty("--vl-card-height", `${get("cardHeight")}px`);
-        card!.classList.toggle("vl-card-centered", get("centeredTextCard"));
-        body?.style.setProperty("--vl-font-size", String(get("fontSize") / 100));
-        updateRomanizeBtn();
-        if (currentLyrics) {
-          clearBody();
-          populateBody(currentLyrics);
-        }
-      });
-      onSongChange();
-
-      if (!getTrackUri()) {
-        setTimeout(() => {
-          if (!getTrackUri()) return;
-          onSongChange();
-        }, 1000);
       }
-
-      removeCb = () => {
-        clearTimeout(swapTimer);
-        Spicetify.Player.removeEventListener("songchange", handler);
-        nativeObserver?.disconnect();
-        lyricsUnsub?.();
-        romanizeUnsub?.();
-        settingsUnsub();
-        destroyRenderer();
-        mountedLyrics = null;
-        card?.remove();
-        card = null;
-        header = null;
-        title = null;
-        showBtn = null;
-        expandBtn = null;
-        closeBtn = null;
-        romanizeBtn = null;
-        headerActions = null;
-        body = null;
-      };
     } else if (!el && current) {
-      if (removeCb) removeCb();
-      removeCb = null;
-      current = null;
+      teardown();
     }
   };
+
+  // These listeners are all business-logic, not DOM-anchor-dependent, so
+  // they're bound exactly once for the lifetime of the extension instead of
+  // being torn down and rebuilt on every anchor swap.
+  Spicetify.Player.addEventListener("songchange", () => onSongChange());
+
+  onLyricsChange((lyrics) => onLyricsUpdate(lyrics));
+
+  onRomanizeChange(() => {
+    updateRomanizeBtn();
+    // resetRomanize() runs synchronously inside onLyricsUpdate(). That
+    // update already rebuilds the body below, so rebuilding here as well
+    // creates a second full renderer (especially expensive for CJK text).
+    if (!syncingLyricsUpdate && currentLyrics && getVisible()) {
+      clearBody();
+      populateBody(currentLyrics);
+    }
+  });
+
+  onSettingsChange(({ key }) => {
+    if (!getVisible()) return;
+    if (
+      key !== null &&
+      key !== "fontSize" &&
+      key !== "fontFamily" &&
+      key !== "cardHeight" &&
+      key !== "cardScrollMode" &&
+      key !== "centeredTextCard" &&
+      key !== "animationStyle" &&
+      key !== "romanization"
+    ) {
+      return;
+    }
+    ensureCard();
+    card!.style.setProperty("--vl-card-height", `${get("cardHeight")}px`);
+    card!.classList.toggle("vl-card-centered", get("centeredTextCard"));
+    body?.style.setProperty("--vl-font-size", String(get("fontSize") / 100));
+    updateRomanizeBtn();
+    if (currentLyrics) {
+      clearBody();
+      populateBody(currentLyrics);
+    }
+  });
 
   runCheck();
   setInterval(runCheck, 1000);
