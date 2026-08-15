@@ -28,10 +28,20 @@ function hideNativeFullscreen(): void {
 
 function makeBtn(icon: string, title: string, onClick: () => void): HTMLButtonElement {
   const btn = document.createElement("button");
-  btn.title = title;
   btn.className = "VL-PlaybarBtn";
+  btn.setAttribute("aria-label", title);
   btn.innerHTML = icon;
   btn.addEventListener("click", onClick);
+
+  const tippy = (Spicetify as any).Tippy;
+  const tippyProps = (Spicetify as any).TippyProps ?? {};
+  if (tippy) {
+    tippy(btn, {
+      ...tippyProps,
+      content: title,
+    });
+  }
+
   return btn;
 }
 

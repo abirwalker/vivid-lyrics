@@ -1164,6 +1164,15 @@ export default class LyricsRenderer {
     scrollEl.addEventListener("wheel", onUserGesture, { passive: true });
     scrollEl.addEventListener("touchstart", onUserGesture, { passive: true });
     scrollEl.addEventListener("touchmove", onUserGesture, { passive: true });
+    scrollEl.addEventListener(
+      "scroll",
+      () => {
+        if (this.autoScrollBlocked) {
+          this.updateSyncButtonVisibility();
+        }
+      },
+      { passive: true },
+    );
 
     track.addEventListener(
       "pointerdown",
@@ -1190,15 +1199,66 @@ export default class LyricsRenderer {
     );
   }
 
+  private isCurrentLineVisible(): boolean {
+    const scrollEl = this.simpleBar?.getScrollElement();
+    if (!scrollEl) return true;
+    const scrollTop = scrollEl.scrollTop;
+    const containerHeight = this.cachedContainerHeight || scrollEl.clientHeight;
+    if (containerHeight <= 0) return true;
+
+    let activeIdx = -1;
+    for (let i = this.lines.length - 1; i >= 0; i--) {
+      if (this.lines[i].state === "Active") {
+        activeIdx = i;
+        break;
+      }
+    }
+
+    if (activeIdx < 0) {
+      if (this.lyricsEnded) {
+        const maxScroll = scrollEl.scrollHeight - containerHeight;
+        return scrollTop >= maxScroll - 60;
+      }
+      const currentTimestamp = (Spicetify.Player.getProgress?.() ?? 0) / 1000;
+      const upcomingIdx = this.lines.findIndex(
+        (l) => l.startTime >= currentTimestamp,
+      );
+      activeIdx =
+        upcomingIdx >= 0
+          ? upcomingIdx
+          : this.computeReferenceIndex(currentTimestamp);
+    }
+
+    if (activeIdx < 0 || activeIdx >= this.lines.length) return true;
+
+    const line = this.lines[activeIdx];
+    const lineTop = line.cachedOffsetTop - scrollTop;
+    const lineBottom = lineTop + line.cachedVocalsHeight;
+    const buffer = Math.min(60, containerHeight * 0.15);
+
+    return lineBottom > buffer && lineTop < containerHeight - buffer;
+  }
+
+  private updateSyncButtonVisibility(): void {
+    if (!this.syncBtn) return;
+    if (!this.autoScrollBlocked) {
+      this.syncBtn.classList.remove("Visible");
+      return;
+    }
+    const isVisible = this.isCurrentLineVisible();
+    this.syncBtn.classList.toggle("Visible", !isVisible);
+  }
+
   private handleUserScrollInteraction(): void {
     if (this.programmaticScroll) return;
     this.autoScrollBlocked = true;
     this.scrollContainer.classList.add("UserScrolling");
-    this.syncBtn?.classList.add("Visible");
 
     const scrollEl = this.simpleBar?.getScrollElement();
     const currentScrollTop = scrollEl ? scrollEl.scrollTop : this.frameScrollTop;
     this.scroller?.syncPosition(currentScrollTop);
+
+    this.updateSyncButtonVisibility();
 
     if (!this.isDraggingScrollbar) {
       this.resetUserScrollTimer();
@@ -1331,6 +1391,10 @@ export default class LyricsRenderer {
 				this.scroller.syncPosition(this.frameScrollTop);
 			}
 		}
+
+    if (this.autoScrollBlocked) {
+      this.updateSyncButtonVisibility();
+    }
 
 		if (skipped) {
       this.lyricsEnded = false;
