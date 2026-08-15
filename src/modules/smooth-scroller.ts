@@ -74,6 +74,11 @@ export class SmoothLyricsScroller {
     }
   }
 
+  syncPosition(pos: number) {
+    this.current = pos;
+    this.velocity = 0;
+  }
+
   update(dt: number) {
     if (this.current === this.target) return;
     dt = Math.min(dt, MAX_DT);

@@ -415,3 +415,84 @@ html.vl-centered-text .VividLyrics-FullscreenContent .VL-FS-Line,
 .VocalsGroup.Sung .Interlude .dotGroup {
     scale: 0;
 }
+
+.SyncPillButton {
+    display: none;
+    align-items: center;
+    gap: 7px;
+    position: absolute;
+    bottom: 72px;
+    left: 50%;
+    transform: translateX(-50%) translateY(0);
+    padding: 8px 18px;
+    background: rgba(var(--spice-rgb-text, 255, 255, 255), 0.08);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border: 1px solid rgba(var(--spice-rgb-text, 255, 255, 255), 0.14);
+    border-radius: 9999px;
+    color: var(--spice-text, #ffffff);
+    font-family: var(--encore-body-font-stack, inherit);
+    font-size: 0.875rem;
+    font-weight: 600;
+    cursor: pointer;
+    z-index: 1000;
+    opacity: 1;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+    transition: background 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+    user-select: none;
+    -webkit-user-select: none;
+
+    svg {
+        width: 16px;
+        height: 16px;
+        fill: currentColor;
+        flex-shrink: 0;
+        opacity: 0.85;
+    }
+
+    #VividLyrics-Card & {
+        bottom: 12px;
+        padding: 7px 14px;
+        font-size: 0.75rem;
+        gap: 5px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+
+        svg {
+            width: 14px;
+            height: 14px;
+        }
+    }
+
+    &:hover {
+        background: rgba(var(--spice-rgb-text, 255, 255, 255), 0.14);
+        box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+    }
+
+    &:active {
+        animation: SyncPill-Bounce 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+    }
+
+    &.Visible {
+        display: inline-flex;
+        animation: SyncPill-Enter 0.25s ease-out both;
+    }
+}
+
+@keyframes SyncPill-Bounce {
+    0%   { transform: translateX(-50%) scale(1); }
+    20%  { transform: translateX(-50%) scale(0.95); }
+    50%  { transform: translateX(-50%) scale(1.18); }
+    70%  { transform: translateX(-50%) scale(0.98); }
+    100% { transform: translateX(-50%) scale(1); }
+}
+
+@keyframes SyncPill-Enter {
+    from {
+        opacity: 0;
+        transform: translateX(-50%) translateY(8px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0);
+    }
+}
