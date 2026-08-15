@@ -68,7 +68,10 @@
 .VL-FS-Line {
     padding: 0;
     margin: 1cqw 0;
-    opacity: 0.51;
+    opacity: 0.75;
+    cursor: default;
+    user-select: text;
+    -webkit-user-select: text;
     font-family: var(--vl-font-stack, sans-serif);
     font-size: calc(var(--vl-default-font-size) * var(--vl-font-size, 1));
     font-weight: 700;
@@ -125,9 +128,12 @@ html.vl-centered-text .VividLyrics-FullscreenContent .VL-FS-Line,
     padding: 0 !important;
     margin: 1cqw 0 !important;
     text-align: inherit;
-    cursor: pointer;
     font: inherit;
     line-height: 1.1818181818;
+
+    &:is(button) {
+        cursor: pointer;
+    }
 
     & .Vocals.Lead {
         opacity: 0.51;
@@ -142,7 +148,7 @@ html.vl-centered-text .VividLyrics-FullscreenContent .VL-FS-Line,
         opacity: 0.497;
     }
 
-    &:hover .Vocals.Lead {
+    &:is(button):hover .Vocals.Lead {
         opacity: 1;
     }
 
@@ -251,6 +257,9 @@ html.vl-centered-text .VividLyrics-FullscreenContent .VL-FS-Line,
 
     &.Static {
         color: rgba(255, 255, 255, 0.9);
+        cursor: default;
+        user-select: text;
+        -webkit-user-select: text;
     }
 
     &.Line {

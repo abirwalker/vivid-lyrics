@@ -373,6 +373,22 @@ function buildContent(): HTMLElement {
           (v) => set("scrollMode", v as Settings["scrollMode"]),
         ),
       },
+      {
+        label: "Auto-Resume Delay",
+        desc: "Seconds to resume auto-scroll after manual scrolling",
+        control: makeSelect(
+          [
+            { label: "5s", value: "5" },
+            { label: "10s (Default)", value: "10" },
+            { label: "15s", value: "15" },
+            { label: "20s", value: "20" },
+            { label: "30s", value: "30" },
+            { label: "Manual Only", value: "0" },
+          ],
+          String(s.autoResumeDelay ?? 10),
+          (v) => set("autoResumeDelay", Number(v)),
+        ),
+      },
     ]],
     ["Effects", [
       {

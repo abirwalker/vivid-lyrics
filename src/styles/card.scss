@@ -203,13 +203,24 @@
         border-radius: 9999px;
         font-size: 0.875rem;
         font-weight: 600;
-        color: var(--text-base, #fff);
+        color: var(--text-base, #fff) !important;
         white-space: nowrap;
+        background: transparent !important;
         background-color: transparent !important;
         cursor: pointer;
+        outline: none;
+        transition: transform 0.15s ease, background-color 0.2s ease, border-color 0.2s ease, scale 0.15s ease;
 
         &:hover {
-            background-color: rgba(255, 255, 255, 0.1) !important;
+            background-color: rgba(255, 255, 255, 0.12) !important;
+            border-color: #fff !important;
+            color: #fff !important;
+            scale: 1.04;
+        }
+
+        &:active {
+            scale: 0.96;
+            background-color: rgba(255, 255, 255, 0.2) !important;
         }
     }
 
@@ -274,6 +285,9 @@
         .VL-StaticLyricsScroll {
             padding-inline: 10px;
             box-sizing: border-box;
+            cursor: default;
+            user-select: text;
+            -webkit-user-select: text;
             overflow-x: hidden !important;
             overflow-y: auto !important;
             overscroll-behavior-y: contain;

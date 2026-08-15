@@ -95,13 +95,10 @@
 
 .VL-FS-Line {
     padding: 4px 0;
-    opacity: 0.5;
-    transition: opacity 0.3s, transform 0.3s;
-    cursor: pointer;
-
-    &:hover {
-        opacity: 0.8;
-    }
+    opacity: 0.75;
+    cursor: default;
+    user-select: text;
+    -webkit-user-select: text;
 }
 
 .VL-FS-Credits {

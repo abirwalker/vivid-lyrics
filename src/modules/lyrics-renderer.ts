@@ -135,8 +135,6 @@ type FrameCtx = {
   splines: ReturnType<typeof getActiveSplines>;
 };
 
-const USER_SCROLL_RESUME_MS = 10000;
-
 function clamp(v: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, v));
 }
@@ -488,9 +486,10 @@ export default class LyricsRenderer {
     // for emphasized syllables; splitting every romanized character greatly
     // increases paint cost. Views rebuild when animationStyle changes.
     if (this.lyrics.type === "Static") {
+      this.lyricsContainer.classList.add("StaticLyrics");
       for (const line of this.lyrics.lines) {
         const group = document.createElement("div");
-        group.className = "VocalsGroup";
+        group.className = "VocalsGroup StaticGroup";
         const vocals = document.createElement("div");
         vocals.className = "Vocals Lead Active";
         const span = document.createElement("span");
@@ -1251,6 +1250,7 @@ export default class LyricsRenderer {
 
   private handleUserScrollInteraction(): void {
     if (this.programmaticScroll) return;
+
     this.autoScrollBlocked = true;
     this.scrollContainer.classList.add("UserScrolling");
 
@@ -1266,7 +1266,13 @@ export default class LyricsRenderer {
   }
 
   private resetUserScrollTimer(): void {
-    if (this.userScrollTimer) clearTimeout(this.userScrollTimer);
+    if (this.userScrollTimer) {
+      clearTimeout(this.userScrollTimer);
+      this.userScrollTimer = null;
+    }
+    const delaySec = get("autoResumeDelay") ?? 10;
+    if (delaySec <= 0) return; // 0 = Manual Only
+
     this.userScrollTimer = setTimeout(() => {
       if (this.isDraggingScrollbar) return;
       this.autoScrollBlocked = false;
@@ -1276,7 +1282,7 @@ export default class LyricsRenderer {
         this.scroller.syncPosition(this.simpleBar.getScrollElement().scrollTop);
       }
       this.scrollToActive();
-    }, USER_SCROLL_RESUME_MS);
+    }, delaySec * 1000);
   }
 
   public unblockAndScrollToActive(instant = false): void {
@@ -2312,7 +2318,6 @@ export default class LyricsRenderer {
 
 	private scrollToActive(instant?: boolean): void {
 		if (!get("autoScroll")) return;
-		if (this.autoScrollBlocked && !instant) return;
 
 		let activeIdx = -1;
 		// BG vocal groups can overlap, leaving several lines Active at once.
@@ -2324,6 +2329,25 @@ export default class LyricsRenderer {
 				break;
 			}
 		}
+
+		if (this.autoScrollBlocked && !instant) {
+			// If active line advanced to a new line and the user is viewing lyrics on screen, resume auto-scroll!
+			if (activeIdx >= 0 && activeIdx !== this.lastActiveIdx && this.isCurrentLineVisible()) {
+				this.autoScrollBlocked = false;
+				this.scrollContainer.classList.remove("UserScrolling");
+				this.syncBtn?.classList.remove("Visible");
+				if (this.userScrollTimer) {
+					clearTimeout(this.userScrollTimer);
+					this.userScrollTimer = null;
+				}
+				if (this.scroller && this.simpleBar) {
+					this.scroller.syncPosition(this.simpleBar.getScrollElement().scrollTop);
+				}
+			} else {
+				return;
+			}
+		}
+
 		if (activeIdx === this.lastActiveIdx && !instant) return;
 		this.lastActiveIdx = activeIdx;
 

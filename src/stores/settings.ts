@@ -26,6 +26,7 @@ export type Settings = {
   wordSeekEnabled: boolean;
   scrollMode: "smooth" | "legacy";
   stripBackgroundBrackets: boolean;
+  autoResumeDelay: number;
 };
 
 const defaults: Settings = {
@@ -53,6 +54,7 @@ const defaults: Settings = {
   wordSeekEnabled: true,
   scrollMode: "smooth",
   stripBackgroundBrackets: false,
+  autoResumeDelay: 10,
 };
 
 let current: Settings = { ...defaults };
