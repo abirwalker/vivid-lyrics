@@ -192,8 +192,8 @@ html.vl-centered-text .VividLyrics-FullscreenContent .VL-FS-Line,
 .Vocals {
     display: flex;
     flex-wrap: wrap;
-    justify-content: flex-start;
     align-items: baseline;
+    column-gap: 0.25em;
     box-sizing: border-box;
     width: 100%;
     padding: 0;
@@ -213,7 +213,6 @@ html.vl-centered-text .VividLyrics-FullscreenContent .VL-FS-Line,
     &.AlignRight {
         justify-content: flex-end;
         text-align: end;
-        column-gap: 0.32ch;
     }
 }
 
@@ -274,7 +273,12 @@ html.vl-centered-text .VividLyrics-FullscreenContent .VL-FS-Line,
 }
 
 .VL-LinePlaceholder {
-    display: inline;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    column-gap: 0.25em;
+    justify-content: inherit;
+    width: 100%;
     color: var(--vl-text-dim, inherit);
     overflow-wrap: anywhere;
     word-break: break-word;
@@ -286,11 +290,6 @@ html.vl-centered-text .VividLyrics-FullscreenContent .VL-FS-Line,
     max-width: 100%;
     overflow-wrap: anywhere;
     word-break: normal;
-    margin-right: 0.25em;
-
-    &:last-child {
-        margin-right: 0;
-    }
 }
 
 .Syllable {
