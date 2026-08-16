@@ -1,7 +1,7 @@
 import type { TransformedLyrics } from "./types";
 import { dumpRomanizedLyrics } from "../tools/dump-romanized";
-import { romanizeBengali, romanizeCantonese, romanizeChinese, romanizeJP, romanizeKorean } from "../utils/romanize";
-import { romanizeThaiLine } from "../utils/romanize-th";
+import { romanizeBengali, romanizeCantonese, romanizeChinese, romanizeJP, romanizeKorean } from "./romanize/romanize";
+import { romanizeThaiLine } from "./romanize/romanize-th";
 import {
   buildKanaWithTokenBoundaries,
   hasRomanizationBoundaryAt,
@@ -10,7 +10,7 @@ import {
   type LineCharReading,
   type LineReading,
   type TokenReading,
-} from "../utils/romanize-jp";
+} from "./romanize/romanize-jp";
 
 // ---------------------------------------------------------------------------
 // Kana → per-syllable romaji assembly

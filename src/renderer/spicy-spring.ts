@@ -4,7 +4,7 @@
  */
 
 import { get } from "../stores/settings";
-import { setCachedStyle, setCachedInline } from "../utils/style-cache";
+import { setCachedStyle, setCachedInline } from "./style-cache";
 
 // --- Cubic Spline (from cubic-spline npm) ---
 class Spline {

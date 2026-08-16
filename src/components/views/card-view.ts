@@ -1,17 +1,17 @@
-import type { TransformedLyrics } from "../lyrics/types";
-import { loadLyrics, onLyricsChange, isLyricsLoading } from "../stores/lyrics";
-import { get, onSettingsChange } from "../stores/settings";
-import storage from "../utils/storage";
-import { getNoLyricsMessage, resetNoLyricsMessage } from "../utils/no-lyrics-messages";
-import LyricsRenderer from "../modules/lyrics-renderer";
+import type { TransformedLyrics } from "../../lyrics/types";
+import { loadLyrics, onLyricsChange, isLyricsLoading } from "../../stores/lyrics";
+import { get, onSettingsChange } from "../../stores/settings";
+import storage from "../../utils/storage";
+import { getNoLyricsMessage, resetNoLyricsMessage } from "../shared/no-lyrics";
+import LyricsRenderer from "../../renderer/lyrics-renderer";
 import {
   getRomanize,
   hasRomanizeCapability,
   toggleRomanize,
   resetRomanize,
   onRomanizeChange,
-} from "../stores/romanize";
-import "../styles/lyrics.scss";
+} from "../../stores/romanize";
+import "../../styles/lyrics.scss";
 
 const ANCHOR = ".main-nowPlayingView-nowPlayingWidget";
 const ANCHOR_FALLBACK = ".main-nowPlayingView-coverArtContainer";

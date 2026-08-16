@@ -1,4 +1,4 @@
-import { setCachedStyle, setCachedInline } from "../utils/style-cache";
+import { setCachedStyle, setCachedInline } from "./style-cache";
 import { makeSpline } from "./spicy-spring";
 
 const WOBBLE_WORDS_AHEAD = 1;

@@ -1,7 +1,7 @@
 import type { TransformedLyrics } from "./types";
-import { query } from "../utils/query";
+import { query } from "./api";
 import { adaptLyrics } from "./adapt";
-import { getLyricsFromCache, setLyricsCache, setLyricsCacheNegative } from "../utils/lyrics-cache";
+import { getLyricsFromCache, setLyricsCache, setLyricsCacheNegative } from "./cache";
 
 async function getAccessToken(): Promise<string> {
   try {

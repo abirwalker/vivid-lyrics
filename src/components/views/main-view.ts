@@ -1,17 +1,17 @@
-import type { TransformedLyrics } from "../lyrics/types";
-import { loadLyrics, getLyrics, onLyricsChange, isLyricsLoading } from "../stores/lyrics";
-import { setPageMode } from "../stores/page";
-import { get, onSettingsChange } from "../stores/settings";
-import { getNoLyricsMessage } from "../utils/no-lyrics-messages";
+import type { TransformedLyrics } from "../../lyrics/types";
+import { loadLyrics, getLyrics, onLyricsChange, isLyricsLoading } from "../../stores/lyrics";
+import { setPageMode } from "../../stores/page";
+import { get, onSettingsChange } from "../../stores/settings";
+import { getNoLyricsMessage } from "../shared/no-lyrics";
 import { setLyricsVisibility } from "./card-view";
-import LyricsRenderer from "../modules/lyrics-renderer";
+import LyricsRenderer from "../../renderer/lyrics-renderer";
 import {
   getRomanize,
   hasRomanizeCapability,
   toggleRomanize,
   resetRomanize,
   onRomanizeChange,
-} from "../stores/romanize";
+} from "../../stores/romanize";
 import SimpleBar from "simplebar";
 import "simplebar/dist/simplebar.css";
 

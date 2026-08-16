@@ -1,10 +1,10 @@
-import { setupCardView } from "./components/card-view";
-import { setupFullscreen } from "./components/fullscreen-view";
-import { setupMainPage } from "./components/main-view";
+import { setupCardView } from "./components/views/card-view";
+import { setupFullscreen } from "./components/views/fullscreen-view";
+import { setupMainPage } from "./components/views/main-view";
 import { setupPlaybarButton } from "./components/playbar-button";
 import { setupSettings, applyStoredFont } from "./components/settings-modal";
 import { setupProfileMenu } from "./components/profile-menu";
-import { setupDevBadge } from "./components/dev-badge";
+import { setupDevBadge } from "./tools/dev-badge";
 
 const VividLyrics = { version: "0.2.0" };
 

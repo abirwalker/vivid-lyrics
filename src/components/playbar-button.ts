@@ -1,4 +1,4 @@
-import VividIcon from "../utils/vivid-icon";
+import VividIcon from "./shared/vivid-icon";
 import { setPageMode, getPageMode } from "../stores/page";
 import "../styles/playbar.scss";
 
@@ -33,11 +33,10 @@ function makeBtn(icon: string, title: string, onClick: () => void): HTMLButtonEl
   btn.innerHTML = icon;
   btn.addEventListener("click", onClick);
 
-  const tippy = (Spicetify as any).Tippy;
-  const tippyProps = (Spicetify as any).TippyProps ?? {};
-  if (tippy) {
-    tippy(btn, {
-      ...tippyProps,
+  const sp = Spicetify as any;
+  if (sp?.Tippy) {
+    sp.Tippy(btn, {
+      ...(sp.TippyProps?.default ?? sp.TippyProps ?? {}),
       content: title,
     });
   }

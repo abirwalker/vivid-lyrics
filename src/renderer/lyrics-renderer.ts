@@ -5,7 +5,7 @@ import {
   setCachedStyle,
   setCachedInline,
   clearCachedStyle,
-} from "../utils/style-cache";
+} from "./style-cache";
 import SimpleBar from "simplebar";
 import "simplebar/dist/simplebar.css";
 import { SmoothLyricsScroller } from "./smooth-scroller";
