@@ -81,7 +81,7 @@ function renderLyrics(lyrics: TransformedLyrics | null): void {
     const credits = document.createElement("div");
     credits.className = "VL-FS-Credits";
     credits.textContent = `Written by: ${lyrics.songWriters.join(", ")}`;
-    lyricsEl.appendChild(credits);
+    activeRenderer.appendCredits(credits);
   }
 }
 
@@ -126,38 +126,59 @@ function updateControls(): void {
   controlsContainer.classList.toggle("VL-FS-Controls-Top", pos !== "bottom");
 
   if (hasRomanizeCapability() && get("romanization")) {
+    const show = getRomanize();
     const romanizeBtn = document.createElement("button");
-    romanizeBtn.className = "VL-FS-ControlBtn";
-    romanizeBtn.title = getRomanize() ? "Show Original Text" : "Show Romanized Text";
-    romanizeBtn.innerHTML = getRomanize() ? RomanizeOffIcon : RomanizeOnIcon;
+    romanizeBtn.className = `VL-FS-ControlBtn romanize-btn${show ? " romanize-active" : ""}`;
+    romanizeBtn.innerHTML = `<span class="icon">${show ? RomanizeOffIcon : RomanizeOnIcon}</span><span class="btn-text">${show ? "Show Original" : "Show Romanized"}</span>`;
     romanizeBtn.addEventListener("click", () => toggleRomanize());
     controlsContainer.appendChild(romanizeBtn);
   }
 
+  const isFs = mode === "fullscreen";
   const fullscreenBtn = document.createElement("button");
-  fullscreenBtn.className = "VL-FS-ControlBtn";
-  fullscreenBtn.title = mode === "fullscreen" ? "Cinema Mode" : "Fullscreen";
-  fullscreenBtn.innerHTML = mode === "fullscreen" ? CloseFullscreenIcon : FullscreenIcon;
+  fullscreenBtn.className = `VL-FS-ControlBtn fullscreen-btn${isFs ? " is-fullscreen" : ""}`;
+  fullscreenBtn.innerHTML = `<span class="icon">${isFs ? CloseFullscreenIcon : FullscreenIcon}</span><span class="btn-text">${isFs ? "Cinema Mode" : "Fullscreen"}</span>`;
   fullscreenBtn.addEventListener("click", () => {
-    setPageMode(mode === "fullscreen" ? "cinema" : "fullscreen");
+    setPageMode(isFs ? "cinema" : "fullscreen");
   });
   controlsContainer.appendChild(fullscreenBtn);
 
   const closeBtn = document.createElement("button");
-  closeBtn.className = "VL-FS-ControlBtn";
-  closeBtn.title = "Close";
-  closeBtn.innerHTML = CloseIcon;
+  closeBtn.className = "VL-FS-ControlBtn close-btn";
+  closeBtn.innerHTML = `<span class="icon">${CloseIcon}</span><span class="btn-text">Close</span>`;
   closeBtn.addEventListener("click", handleClose);
   controlsContainer.appendChild(closeBtn);
+}
+
+let idleTimer: number | null = null;
+let isHoveringControls = false;
+
+function resetIdleTimer(): void {
+  if (!content) return;
+  content.classList.remove("vl-idle");
+  if (idleTimer) {
+    clearTimeout(idleTimer);
+    idleTimer = null;
+  }
+  if (getPageMode() === "page" || isHoveringControls) return;
+
+  idleTimer = setTimeout(() => {
+    if (getPageMode() !== "page" && !isHoveringControls) {
+      content?.classList.add("vl-idle");
+    }
+  }, 3000);
 }
 
 function show(): void {
   if (!portal) return;
   portal.style.display = "block";
   document.addEventListener("keydown", onKeyDown);
+  document.addEventListener("keydown", resetIdleTimer);
+  document.addEventListener("mousemove", resetIdleTimer);
   document.addEventListener("fullscreenchange", onFullscreenChange);
   isLoading = isLyricsLoading();
   updateControls();
+  resetIdleTimer();
   renderLyrics(getLyrics());
 }
 
@@ -165,7 +186,15 @@ function hide(): void {
   if (!portal) return;
   portal.style.display = "none";
   document.removeEventListener("keydown", onKeyDown);
+  document.removeEventListener("keydown", resetIdleTimer);
+  document.removeEventListener("mousemove", resetIdleTimer);
   document.removeEventListener("fullscreenchange", onFullscreenChange);
+
+  if (idleTimer) {
+    clearTimeout(idleTimer);
+    idleTimer = null;
+  }
+  content?.classList.remove("vl-idle");
 
   // Destroy renderer to stop RAF loop and free GPU memory
   if (activeRenderer) {
@@ -211,6 +240,14 @@ export function setupFullscreen(): void {
 
   controlsContainer = document.createElement("div");
   controlsContainer.className = "VL-FS-Controls";
+  controlsContainer.addEventListener("mouseenter", () => {
+    isHoveringControls = true;
+    resetIdleTimer();
+  });
+  controlsContainer.addEventListener("mouseleave", () => {
+    isHoveringControls = false;
+    resetIdleTimer();
+  });
 
   const lyricsDiv = document.createElement("div");
   lyricsDiv.className = "VL-FS-Lyrics";

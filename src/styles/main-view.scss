@@ -29,13 +29,12 @@
 
 .VL-MainControls {
     position: absolute;
-    bottom: 16px;
     left: 50%;
     transform: translateX(-50%);
     z-index: 100;
     display: flex;
-    gap: 6px;
-    padding: 6px 10px;
+    gap: 4px;
+    padding: 4px 6px;
     background: rgba(28, 28, 28, 0.75);
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
@@ -46,39 +45,95 @@
     #VividLyrics-MainPage:hover & {
         opacity: 1;
     }
+
+    &.VL-MainControls-Top {
+        top: 16px !important;
+        bottom: auto !important;
+    }
+
+    &.VL-MainControls-Bottom {
+        bottom: 16px !important;
+        top: auto !important;
+    }
 }
 
 .VL-MainControlBtn {
     display: inline-flex;
     align-items: center;
-    justify-content: center;
-    width: 32px;
+    justify-content: flex-start;
     height: 32px;
-    padding: 0;
+    width: 32px;
+    min-width: 0;
+    padding: 0 7px;
+    margin: 0;
     background: transparent;
     border: none;
-    border-radius: 9999px;
+    border-radius: 16px;
     color: rgba(255, 255, 255, 0.7);
     cursor: pointer;
+    overflow: hidden;
+    box-sizing: border-box;
+    outline: none;
     transition:
-        background 0.15s,
-        color 0.15s,
-        transform 0.15s;
+        width 0.25s cubic-bezier(0.4, 0, 0.2, 1),
+        background-color 0.2s ease,
+        color 0.2s ease,
+        transform 0.15s ease;
 
-    svg {
+    .icon {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
         width: 18px;
         height: 18px;
-        fill: currentColor;
+
+        svg {
+            width: 18px;
+            height: 18px;
+            fill: currentColor;
+            display: block;
+        }
+    }
+
+    .btn-text {
+        font-size: 12px;
+        font-weight: 600;
+        margin-left: 8px;
+        opacity: 0;
+        transition: opacity 0.15s ease;
+        white-space: nowrap;
+        flex-shrink: 0;
     }
 
     &:hover {
-        background: rgba(255, 255, 255, 0.12);
+        background: rgba(255, 255, 255, 0.14);
         color: #fff;
-        transform: scale(1.1);
+
+        .btn-text {
+            opacity: 1;
+            transition-delay: 0.08s;
+        }
     }
 
     &:active {
         transform: scale(0.95);
+    }
+
+    &.cinema-btn:hover {
+        width: 120px;
+    }
+
+    &.shrink-btn:hover {
+        width: 114px;
+    }
+
+    &.romanize-btn:hover {
+        width: 138px;
+    }
+
+    &.romanize-btn.romanize-active:hover {
+        width: 124px;
     }
 }
 

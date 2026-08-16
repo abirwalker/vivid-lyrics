@@ -108,11 +108,27 @@ function renderPage(lyrics: TransformedLyrics | null): void {
   }
 }
 
+let mainControls: HTMLElement | null = null;
+
+function updateMainControlsPosition(): void {
+  if (!mainControls) return;
+  const pos = get("controlsPosition") || "bottom";
+  mainControls.classList.toggle("VL-MainControls-Bottom", pos === "bottom");
+  mainControls.classList.toggle("VL-MainControls-Top", pos !== "bottom");
+}
+
 function updateMainRomanizeBtn(): void {
   if (!romanizeBtn) return;
   const show = getRomanize();
-  romanizeBtn.innerHTML = show ? RomanizeOffIcon : RomanizeOnIcon;
-  romanizeBtn.title = show ? "Show Original Text" : "Show Romanized Text";
+  const iconEl = romanizeBtn.querySelector<HTMLElement>(".icon");
+  const textEl = romanizeBtn.querySelector<HTMLElement>(".btn-text");
+  if (iconEl) {
+    iconEl.innerHTML = show ? RomanizeOffIcon : RomanizeOnIcon;
+  }
+  if (textEl) {
+    textEl.textContent = show ? "Show Original" : "Show Romanized";
+  }
+  romanizeBtn.classList.toggle("romanize-active", show);
   romanizeBtn.style.display = hasRomanizeCapability() && get("romanization") ? "" : "none";
 }
 
@@ -131,26 +147,25 @@ function open(): void {
 
   const controls = document.createElement("div");
   controls.className = "VL-MainControls";
+  mainControls = controls;
+  updateMainControlsPosition();
 
   romanizeBtn = document.createElement("button");
-  romanizeBtn.className = "VL-MainControlBtn";
-  romanizeBtn.title = "Show Romanized Text";
-  romanizeBtn.innerHTML = RomanizeOnIcon;
+  romanizeBtn.className = "VL-MainControlBtn romanize-btn";
+  romanizeBtn.innerHTML = `<span class="icon">${RomanizeOnIcon}</span><span class="btn-text">Show Romanized</span>`;
   romanizeBtn.addEventListener("click", () => toggleRomanize());
   controls.appendChild(romanizeBtn);
   updateMainRomanizeBtn();
 
   const cinemaBtn = document.createElement("button");
-  cinemaBtn.className = "VL-MainControlBtn";
-  cinemaBtn.title = "Cinema Mode";
-  cinemaBtn.innerHTML = CinemaIcon;
+  cinemaBtn.className = "VL-MainControlBtn cinema-btn";
+  cinemaBtn.innerHTML = `<span class="icon">${CinemaIcon}</span><span class="btn-text">Cinema Mode</span>`;
   cinemaBtn.addEventListener("click", () => setPageMode("cinema"));
   controls.appendChild(cinemaBtn);
 
   const shrinkBtn = document.createElement("button");
-  shrinkBtn.className = "VL-MainControlBtn";
-  shrinkBtn.title = "Shrink to Now Playing";
-  shrinkBtn.innerHTML = ShrinkIcon;
+  shrinkBtn.className = "VL-MainControlBtn shrink-btn";
+  shrinkBtn.innerHTML = `<span class="icon">${ShrinkIcon}</span><span class="btn-text">Now Playing</span>`;
   shrinkBtn.addEventListener("click", () => {
     (Spicetify.Platform.History as any).goBack();
     setTimeout(() => setLyricsVisibility(true), 100);
@@ -215,6 +230,7 @@ function open(): void {
       key !== "fontSize" &&
       key !== "fontFamily" &&
       key !== "gradientDirection" &&
+      key !== "controlsPosition" &&
       key !== "scrollMode" &&
       key !== "animationStyle" &&
       key !== "romanization" &&
@@ -222,6 +238,7 @@ function open(): void {
     ) {
       return;
     }
+    updateMainControlsPosition();
     updateMainRomanizeBtn();
     isLoading = isLyricsLoading();
     renderPage(getLyrics());
@@ -244,6 +261,7 @@ function closePage(): void {
 
   pageContainer?.remove();
   pageContainer = null;
+  mainControls = null;
   romanizeBtn = null;
 
   for (const el of hiddenSiblings) {
