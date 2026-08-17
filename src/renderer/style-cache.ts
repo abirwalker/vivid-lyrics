@@ -33,11 +33,13 @@ export function setCachedGlow(
   blurRadiusPx: number,
   opacityPercent: number,
 ): void {
-  const blur = Math.round(Math.max(0, blurRadiusPx) * 2) / 2;
   const opacity = Math.round(Math.max(0, Math.min(opacityPercent, 100)) / 2) * 2;
-  setCachedStyle(el, "--text-shadow-blur-radius", `${blur}px`);
   setCachedStyle(el, "--text-shadow-opacity", `${opacity}%`);
-  setCachedStyle(el, "--vl-glow-filter-radius", `${blur / 2}px`);
+  if (opacity > 0) {
+    const blur = Math.round(Math.max(0, blurRadiusPx) * 2) / 2;
+    setCachedStyle(el, "--text-shadow-blur-radius", `${blur}px`);
+    setCachedStyle(el, "--vl-glow-filter-radius", `${blur / 2}px`);
+  }
 }
 
 export function clearCachedStyle(el: Element, prop: string): void {

@@ -58,9 +58,6 @@ class RenderLoopCoordinator {
   private tick = (now: number): void => {
     if (!this.running) return;
 
-    // Advance once by the real elapsed time, as Spicy Lyrics does. Carrying a
-    // stalled frame forward as debt makes several later frames run the spring
-    // simulation faster than real time, producing a visible slow/fast recovery.
     const deltaTime = Math.max((now - this.lastFrameTime) / 1000, 0);
     this.lastFrameTime = now;
 

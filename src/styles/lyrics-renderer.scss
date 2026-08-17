@@ -212,6 +212,9 @@ html.vl-centered-text .VividLyrics-FullscreenContent .VL-FS-Line,
     min-width: 0;
     overflow-wrap: anywhere;
     word-break: normal;
+    // One soft halo for the vocal row replaces the identical 6px shadow that
+    // used to be rasterized independently for every word-synced letter.
+    filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.15));
 
     &.AlignLeft {
         justify-content: flex-start;
@@ -359,12 +362,9 @@ html.vl-centered-text .VividLyrics-FullscreenContent .VL-FS-Line,
     background-clip: text;
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
-    // Keep the distance blur and soft base halo on the glyph. The animated
-    // spring glow is rendered by a duplicate compositor layer below, avoiding
-    // per-frame Skia text-shadow rerasterization.
-    text-shadow:
-        0 0 var(--vl-blur, 0) var(--vl-text-dim),
-        0 0 6px rgba(255, 255, 255, 0.15);
+    // Distance blur remains glyph-accurate. The permanent halo lives once on
+    // the parent vocal row; the animated active-word glow stays below.
+    text-shadow: 0 0 var(--vl-blur, 0) var(--vl-text-dim);
 
     &::after {
         content: attr(data-vl-text);
@@ -377,10 +377,12 @@ html.vl-centered-text .VividLyrics-FullscreenContent .VL-FS-Line,
         opacity: var(--text-shadow-opacity, 0%);
         filter: blur(var(--vl-glow-filter-radius, 2px));
         transform: translateZ(0);
+        display: none;
     }
 }
 
 .VocalsGroup.Active .Letter::after {
+    display: block;
     will-change: filter, opacity;
 }
 
