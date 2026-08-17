@@ -6,6 +6,7 @@ import {
   type Settings,
 } from "../stores/settings";
 import storage from "../utils/storage";
+import { CloseIcon } from "./shared/svg-icons";
 import "../styles/settings.scss";
 
 const FONT_CSS_URL = "https://fonts.spikerko.org/spicy-lyrics/source.css";
@@ -521,7 +522,7 @@ export function openModal(): void {
 
   const closeBtn = document.createElement("button");
   closeBtn.className = "VL-CloseBtn";
-  closeBtn.innerHTML = `<svg width="24" height="24" viewBox="0 0 16 16" fill="currentColor"><path d="M1.47 1.47a.75.75 0 0 1 1.06 0L8 6.94l5.47-5.47a.75.75 0 1 1 1.06 1.06L9.06 8l5.47 5.47a.75.75 0 1 1-1.06 1.06L8 9.06l-5.47 5.47a.75.75 0 0 1-1.06-1.06L6.94 8 1.47 2.53a.75.75 0 0 1 0-1.06z"/></svg>`;
+  closeBtn.innerHTML = CloseIcon;
   closeBtn.addEventListener("click", closeModal);
   header.appendChild(closeBtn);
 

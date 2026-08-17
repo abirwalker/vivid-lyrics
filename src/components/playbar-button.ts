@@ -1,11 +1,11 @@
 import VividIcon from "./shared/vivid-icon";
+import { PlaybarCinemaIcon as FullscreenIcon } from "./shared/svg-icons";
 import { setPageMode, getPageMode } from "../stores/page";
 import "../styles/playbar.scss";
 
 const EXTRA_CONTROLS_SEL = ".main-nowPlayingBar-extraControls";
 const NATIVE_FULLSCREEN_SEL = 'button[data-testid="fullscreen-mode-button"]';
 const VIVID_ROUTE = "/vivid-lyrics";
-const FullscreenIcon = `<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M6.53 9.47a.75.75 0 0 1 0 1.06l-2.72 2.72h1.94a.75.75 0 0 1 0 1.5H1.75v-4a.75.75 0 0 1 1.5 0v1.94l2.72-2.72a.75.75 0 0 1 1.06 0Zm2.94-2.94a.75.75 0 0 1 0-1.06l2.72-2.72h-1.94a.75.75 0 1 1 0-1.5h4v4a.75.75 0 0 1-1.5 0V3.31l-2.72 2.72a.75.75 0 0 1-1.06 0Z"/></svg>`;
 
 let injected = false;
 let vividBtn: HTMLButtonElement | null = null;

@@ -8,6 +8,7 @@ import {
 } from "./style-cache";
 import SimpleBar from "simplebar";
 import "simplebar/dist/simplebar.css";
+import { SyncIcon } from "../components/shared/svg-icons";
 import { SmoothLyricsScroller } from "./smooth-scroller";
 import { renderLoop, type SharedFrame } from "./render-loop";
 import {
@@ -298,15 +299,7 @@ export default class LyricsRenderer {
     this.syncBtn.className = "SyncPillButton";
     this.syncBtn.setAttribute("type", "button");
     this.syncBtn.setAttribute("aria-label", "Sync lyrics");
-    this.syncBtn.innerHTML = `
-      <svg role="img" height="14" width="14" aria-hidden="true" viewBox="0 0 16 16" fill="currentColor">
-        <rect x="1" y="5" width="2" height="6" rx="1"/>
-        <rect x="4.5" y="3" width="2" height="10" rx="1"/>
-        <rect x="8" y="1" width="2" height="14" rx="1"/>
-        <rect x="11.5" y="4" width="2" height="8" rx="1"/>
-      </svg>
-      <span>Sync</span>
-    `;
+    this.syncBtn.innerHTML = `${SyncIcon}<span>Sync</span>`;
     this.syncBtn.addEventListener("click", (e) => {
       e.stopPropagation();
       this.unblockAndScrollToActive();
@@ -1364,8 +1357,6 @@ export default class LyricsRenderer {
       this.applyVirtualizationWindow(refIdx);
     }
 
-    let hasActive = false;
-
     for (const line of this.lines) {
       this.animateLine(
         line,
@@ -1375,7 +1366,6 @@ export default class LyricsRenderer {
         frame.springConfig,
         frame.ctx,
       );
-      if (line.state === "Active") hasActive = true;
     }
 
     this.lyricsEnded =
@@ -1413,18 +1403,64 @@ export default class LyricsRenderer {
 
   /** Snap a line to its initial Idle state — safe because no animation has happened yet */
   private snapToIdle(line: LineInfo, animationStyle: FrameCtx["animationStyle"]): void {
-    if (animationStyle === "wobble" && line.wobbleChars && line.wobbleState) {
-      snapWobbleToIdle(line.wobbleChars);
+    if (animationStyle === "wobble") {
+      if (line.wobbleChars && line.wobbleState) {
+        snapWobbleToIdle(line.wobbleChars);
+      }
+      if (line.backgroundWobbleChars && line.backgroundWobbleState) {
+        snapWobbleToIdle(line.backgroundWobbleChars);
+      }
     } else if (line.isSyllableType && line.syllables.length > 0) {
       for (const syl of line.syllables) {
         setCachedStyle(syl.span, "--char-progress", "-20%");
+        if (syl.springs) {
+          syl.springs.Scale.SetGoal(1, true);
+          syl.springs.YOffset.SetGoal(0, true);
+          syl.springs.Glow.SetGoal(0, true);
+          setCachedInline(syl.span, "scale", "");
+          setCachedInline(syl.span, "transform", "");
+          setCachedStyle(syl.span, "--text-shadow-blur-radius", "4px");
+          setCachedStyle(syl.span, "--text-shadow-opacity", "0%");
+        }
         for (const ltr of syl.letters) {
           setCachedStyle(ltr.span, "--char-progress", "-20%");
+          if (ltr.springs) {
+            ltr.springs.Scale.SetGoal(1, true);
+            ltr.springs.YOffset.SetGoal(0, true);
+            ltr.springs.Glow.SetGoal(0, true);
+            setCachedInline(ltr.span, "scale", "");
+            setCachedInline(ltr.span, "transform", "");
+            setCachedStyle(ltr.span, "--text-shadow-blur-radius", "4px");
+            setCachedStyle(ltr.span, "--text-shadow-opacity", "0%");
+          }
+        }
+      }
+      if (line.backgroundSyllables) {
+        for (const bgSyl of line.backgroundSyllables) {
+          setCachedStyle(bgSyl.span, "--char-progress", "-20%");
+          if (bgSyl.springs) {
+            bgSyl.springs.Scale.SetGoal(1, true);
+            bgSyl.springs.YOffset.SetGoal(0, true);
+            bgSyl.springs.Glow.SetGoal(0, true);
+            setCachedInline(bgSyl.span, "scale", "");
+            setCachedInline(bgSyl.span, "transform", "");
+            setCachedStyle(bgSyl.span, "--text-shadow-blur-radius", "4px");
+            setCachedStyle(bgSyl.span, "--text-shadow-opacity", "0%");
+          }
+          for (const letter of bgSyl.letters) {
+            setCachedStyle(letter, "--char-progress", "-20%");
+          }
         }
       }
     } else if (!line.isSyllableType && line.syllables.length === 0) {
       if (line.dots) {
         for (const dot of line.dots) {
+          if (dot.springs) {
+            dot.springs.Scale.SetGoal(1, true);
+            dot.springs.YOffset.SetGoal(0, true);
+            dot.springs.Glow.SetGoal(0, true);
+            dot.springs.Opacity.SetGoal(0, true);
+          }
           setCachedInline(dot.span, "scale", "");
           setCachedInline(dot.span, "transform", "");
           dot.span.style.opacity = "";
@@ -1433,6 +1469,11 @@ export default class LyricsRenderer {
       const lyricSpan = line.lyricSpanCache;
       if (lyricSpan) {
         lyricSpan.style.setProperty("--line-progress", "0%");
+        if (line.glowSpring) {
+          line.glowSpring.SetGoal(0, true);
+          setCachedStyle(lyricSpan, "--text-shadow-blur-radius", "4px");
+          setCachedStyle(lyricSpan, "--text-shadow-opacity", "0%");
+        }
       }
     }
   }
