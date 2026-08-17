@@ -1,6 +1,6 @@
 .LyricsScrollContainer {
     --vl-default-font-size: clamp(1.85rem, 7cqw, 3.5rem);
-    --vl-text-highlight: rgba(255, 255, 255, 1);
+    --vl-text-highlight: var(--vl-accent-color, rgba(255, 255, 255, 1));
     --vl-text-dim: rgba(255, 255, 255, 0.35);
     position: relative;
     container-type: inline-size;
@@ -371,9 +371,9 @@ html.vl-centered-text .VividLyrics-FullscreenContent .VL-FS-Line,
         position: absolute;
         inset: 0;
         pointer-events: none;
-        color: white;
+        color: var(--vl-accent-color, white);
         background: none;
-        -webkit-text-fill-color: white;
+        -webkit-text-fill-color: var(--vl-accent-color, white);
         opacity: var(--text-shadow-opacity, 0%);
         filter: blur(var(--vl-glow-filter-radius, 2px));
         transform: translateZ(0);

@@ -5,6 +5,7 @@ import { setupPlaybarButton } from "./components/playbar-button";
 import { setupSettings, applyStoredFont } from "./components/settings-modal";
 import { setupProfileMenu } from "./components/profile-menu";
 import { setupDevBadge } from "./tools/dev-badge";
+import { setupDynamicColors } from "./utils/palette-extractor";
 
 const VividLyrics = { version: "0.2.0" };
 
@@ -27,6 +28,7 @@ async function main() {
   (window as any).__vivid_lyrics = VividLyrics;
   console.log("[Vivid Lyrics] Loaded v" + VividLyrics.version);
 
+  setupDynamicColors();
   setupCardView();
   setupFullscreen();
   setupMainPage();
