@@ -1,5 +1,6 @@
 import { get } from "../stores/settings";
 import { getActiveSplines, type SpicySpringConfig } from "./spicy-spring";
+import { getSmoothProgress } from "./playback-clock";
 
 // STEP_CAP bounds how much virtual time any *single* visible frame is allowed
 // to advance the springs by. This is what keeps motion smooth — without it, a
@@ -84,8 +85,8 @@ class RenderLoopCoordinator {
 
     const blurStrength = get("blurStrength");
     const animationStyle = get("animationStyle");
-    const currentTimestamp = Spicetify.Player.getProgress() / 1000;
     const isPlaying = Spicetify.Player.isPlaying();
+    const currentTimestamp = getSmoothProgress(isPlaying);
     const frame: SharedFrame = {
       currentTimestamp,
       deltaTime,

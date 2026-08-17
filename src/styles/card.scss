@@ -72,6 +72,8 @@
         overflow: hidden;
         background: transparent;
         color: var(--text-subdued, #b3b3b3);
+        transform: translateZ(0);
+        will-change: width;
         transition:
             width 0.25s cubic-bezier(0.4, 0, 0.2, 1),
             background-color 0.2s ease,
@@ -85,6 +87,7 @@
             align-items: center;
             justify-content: center;
             flex-shrink: 0;
+            transform: translateZ(0);
 
             svg {
                 fill: currentColor;
@@ -234,6 +237,8 @@
         padding: 32px 6px 2px 6px;
         contain: layout paint;
         isolation: isolate;
+        transform: translate3d(0, 0, 0);
+        backface-visibility: hidden;
 
         .LyricsScrollContainer {
             flex: 1;

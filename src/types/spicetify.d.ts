@@ -5,6 +5,7 @@ declare namespace Spicetify {
     removeEventListener(event: string, cb: (e: any) => void): void;
     seek(ms: number): void;
     getProgress(): number;
+    getDuration?(): number;
     isPlaying(): boolean;
   };
   const Platform: {
