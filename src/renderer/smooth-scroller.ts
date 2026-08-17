@@ -9,6 +9,7 @@ interface ScrollerOptions {
   stiffness?: number;
   damping?: number;
   manualScrollPauseMs?: number;
+  onScrollApplied?: (scrollTop: number) => void;
 }
 
 const MAX_DT = 1 / 8;
@@ -22,6 +23,7 @@ export class SmoothLyricsScroller {
   private stiffness: number;
   private damping: number;
   private manualPauseMs: number;
+  private onScrollApplied?: (scrollTop: number) => void;
 
   private current = 0;
   private target = 0;
@@ -33,6 +35,7 @@ export class SmoothLyricsScroller {
   private resumeTimer: number | null = null;
   private onUserInput: (() => void) | null = null;
   private prevLineCenter = -1;
+  private lastAppliedScrollTop = Number.NaN;
 
   constructor(opts: ScrollerOptions) {
     this.simpleBar = opts.simpleBar;
@@ -43,6 +46,7 @@ export class SmoothLyricsScroller {
     this.stiffness = opts.stiffness ?? 180;
     this.damping = opts.damping ?? 20;
     this.manualPauseMs = opts.manualScrollPauseMs ?? 4000;
+    this.onScrollApplied = opts.onScrollApplied;
 
     this.bindManualScrollDetection();
   }
@@ -77,6 +81,7 @@ export class SmoothLyricsScroller {
   syncPosition(pos: number) {
     this.current = pos;
     this.velocity = 0;
+    this.lastAppliedScrollTop = Math.round(pos);
   }
 
   update(dt: number) {
@@ -119,8 +124,12 @@ export class SmoothLyricsScroller {
   }
 
   private applyScroll(pos: number) {
+    const scrollTop = Math.round(pos);
+    if (scrollTop === this.lastAppliedScrollTop) return;
+    this.lastAppliedScrollTop = scrollTop;
     this.programmaticScroll = true;
-    this.simpleBar.getScrollElement().scrollTop = Math.round(pos);
+    this.onScrollApplied?.(scrollTop);
+    this.simpleBar.getScrollElement().scrollTop = scrollTop;
     this.programmaticScroll = false;
   }
 

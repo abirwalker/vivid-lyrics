@@ -4,7 +4,7 @@
  */
 
 import { get } from "../stores/settings";
-import { setCachedStyle, setCachedInline } from "./style-cache";
+import { setCachedInline, setCachedGlow } from "./style-cache";
 
 // --- Cubic Spline (from cubic-spline npm) ---
 class Spline {
@@ -422,8 +422,11 @@ export function applySpringStyles(
 ): void {
   setCachedInline(el, "scale", `${values.scale}`);
   setCachedInline(el, "transform", `translate3d(0, calc(var(--vl-default-font-size) * ${values.yOffset}), 0)`);
-  setCachedStyle(el, "--text-shadow-blur-radius", `${4 + 2 * values.glow * glowIntensity}px`);
-  setCachedStyle(el, "--text-shadow-opacity", `${Math.min(values.glow * 35 * glowIntensity, 100)}%`);
+  setCachedGlow(
+    el,
+    4 + 2 * values.glow * glowIntensity,
+    values.glow * 35 * glowIntensity,
+  );
 }
 
 export function applyGlowStyles(

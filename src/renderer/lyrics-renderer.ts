@@ -4,6 +4,7 @@ import { getRomanize } from "../stores/romanize";
 import {
   setCachedStyle,
   setCachedInline,
+  setCachedGlow,
   clearCachedStyle,
 } from "./style-cache";
 import SimpleBar from "simplebar";
@@ -237,13 +238,16 @@ export default class LyricsRenderer {
   private lastActiveIdx = -1;
   private needsScroll = false;
   private scrollPending = false;
+  private pendingSeekTimestamp: number | null = null;
+  private pendingSeekDeadline = 0;
   private lastBlurCleared = false;
+  private lastBlurRenderKey: string | null = null;
+  private lastBlurActiveStart = -1;
+  private lastBlurActiveEnd = -1;
   private cachedContainerHeight = 0;
   private cachedMaxScroll = 0;
-  // Snapshotted once per frame (before any DOM mutation happens that frame)
-  // so isLineNearViewport can check dozens of lines without re-reading
-  // scrollTop live each time — a live read after this frame's virtualization
-  // mount/unmount would force a synchronous layout flush.
+  // Kept current by scroll events and programmatic writes. A live read in the
+  // animation loop can synchronously flush Spotify's shared document layout.
   private frameScrollTop = 0;
   /** Index of the line the virtualization window is currently centered on. */
   private referenceLineIndex = -1;
@@ -292,6 +296,7 @@ export default class LyricsRenderer {
     parentContainer.appendChild(this.scrollContainer);
 
     this.simpleBar = new SimpleBar(this.scrollContainer, { autoHide: false });
+    this.frameScrollTop = this.simpleBar.getScrollElement().scrollTop;
     this.lyricsContainer.style.paddingBottom =
       viewMode === "card" ? "1em" : "3em";
 
@@ -327,6 +332,9 @@ export default class LyricsRenderer {
         mode: "spring",
         stiffness: 180,
         damping: 20,
+        onScrollApplied: (scrollTop) => {
+          this.frameScrollTop = scrollTop;
+        },
       });
     }
 
@@ -541,8 +549,7 @@ export default class LyricsRenderer {
           dot.addEventListener("click", (e) => {
             if (!get("wordSeekEnabled")) return;
             e.stopPropagation();
-            Spicetify.Player.seek(dtStart * 1000);
-            this.unblockAndScrollToActive();
+            this.seekToLyricTime(dtStart);
           });
           dotGroup.appendChild(dot);
           dots.push({
@@ -659,8 +666,7 @@ export default class LyricsRenderer {
             span.addEventListener("click", (e) => {
               if (!get("wordSeekEnabled")) return;
               e.stopPropagation();
-              Spicetify.Player.seek(sStartTime * 1000);
-              this.unblockAndScrollToActive();
+              this.seekToLyricTime(sStartTime);
             });
 
             const letters: LetterInfo[] = [];
@@ -676,6 +682,7 @@ export default class LyricsRenderer {
                 const letterSpan = document.createElement("span");
                 letterSpan.className = "Letter";
                 letterSpan.textContent = lettersArr[i];
+                letterSpan.dataset.vlText = lettersArr[i];
                 span.appendChild(letterSpan);
 
                 const letterStart = sStartTime + i * letterDuration;
@@ -878,7 +885,7 @@ export default class LyricsRenderer {
           span.addEventListener("click", (e) => {
             if (!get("wordSeekEnabled")) return;
             e.stopPropagation();
-            Spicetify.Player.seek(syllableStart * 1000);
+            this.seekToLyricTime(syllableStart);
           });
           word.appendChild(span);
 
@@ -892,6 +899,7 @@ export default class LyricsRenderer {
               const letter = document.createElement("span");
               letter.className = "Letter";
               letter.textContent = char;
+              letter.dataset.vlText = char;
               span.appendChild(letter);
               letters.push(letter);
               backgroundWobbleChars.push({
@@ -963,9 +971,7 @@ export default class LyricsRenderer {
 
       const startTimeCopy = startTime;
       group.addEventListener("click", () => {
-        Spicetify.Player.seek(startTimeCopy * 1000);
-        this.unblockAndScrollToActive();
-        renderLoop.ensureRunning();
+        this.seekToLyricTime(startTimeCopy);
       });
 
       this.lyricsContainer.appendChild(group);
@@ -1159,6 +1165,15 @@ export default class LyricsRenderer {
     scrollEl.addEventListener(
       "scroll",
       () => {
+        const scrollTop = scrollEl.scrollTop;
+        // Native scrollbar drags do not dispatch wheel/pointer events to our
+        // host. A position different from the last renderer write is therefore
+        // user input and must pause auto-scroll just like mouse-wheel scrolling.
+        const userMovedScroll = Math.round(scrollTop) !== Math.round(this.frameScrollTop);
+        this.frameScrollTop = scrollTop;
+        if (userMovedScroll) {
+          this.handleUserScrollInteraction();
+        }
         if (this.autoScrollBlocked) {
           this.updateSyncButtonVisibility();
         }
@@ -1241,15 +1256,26 @@ export default class LyricsRenderer {
     this.syncBtn.classList.toggle("Visible", !isVisible);
   }
 
+  /**
+   * Read the live position only at an explicit user/timeout boundary. Keeping
+   * this out of onFrame avoids a document-wide forced layout every display
+   * frame, while a seek after manual scrolling still starts from the exact
+   * position the user sees.
+   */
+  private syncScrollPosition(): number {
+    const scrollTop = this.simpleBar?.getScrollElement().scrollTop ?? this.frameScrollTop;
+    this.frameScrollTop = scrollTop;
+    this.scroller?.syncPosition(scrollTop);
+    return scrollTop;
+  }
+
   private handleUserScrollInteraction(): void {
     if (this.programmaticScroll) return;
 
     this.autoScrollBlocked = true;
     this.scrollContainer.classList.add("UserScrolling");
 
-    const scrollEl = this.simpleBar?.getScrollElement();
-    const currentScrollTop = scrollEl ? scrollEl.scrollTop : this.frameScrollTop;
-    this.scroller?.syncPosition(currentScrollTop);
+    this.syncScrollPosition();
 
     this.updateSyncButtonVisibility();
 
@@ -1271,9 +1297,7 @@ export default class LyricsRenderer {
       this.autoScrollBlocked = false;
       this.scrollContainer.classList.remove("UserScrolling");
       this.syncBtn?.classList.remove("Visible");
-      if (this.scroller && this.simpleBar) {
-        this.scroller.syncPosition(this.simpleBar.getScrollElement().scrollTop);
-      }
+      this.syncScrollPosition();
       this.scrollToActive();
     }, delaySec * 1000);
   }
@@ -1286,10 +1310,27 @@ export default class LyricsRenderer {
       clearTimeout(this.userScrollTimer);
       this.userScrollTimer = null;
     }
-    if (this.scroller && this.simpleBar) {
-      this.scroller.syncPosition(this.simpleBar.getScrollElement().scrollTop);
-    }
+    this.syncScrollPosition();
     this.scrollToActive(instant);
+  }
+
+  /** Seek first, then scroll once Spotify has reported the new playback time. */
+  private seekToLyricTime(timestamp: number): void {
+    this.autoScrollBlocked = false;
+    this.scrollContainer.classList.remove("UserScrolling");
+    this.syncBtn?.classList.remove("Visible");
+    if (this.userScrollTimer) {
+      clearTimeout(this.userScrollTimer);
+      this.userScrollTimer = null;
+    }
+
+    // Do not call scrollToActive here: the active line still belongs to the
+    // old player position until Spotify completes the seek.
+    this.syncScrollPosition();
+    this.pendingSeekTimestamp = timestamp;
+    this.pendingSeekDeadline = performance.now() + 1500;
+    Spicetify.Player.seek(timestamp * 1000);
+    renderLoop.ensureRunning();
   }
 
   private onFrame(frame: SharedFrame): void {
@@ -1304,6 +1345,11 @@ export default class LyricsRenderer {
 
     const currentTimestamp = frame.currentTimestamp;
     const isPlaying = frame.isPlaying;
+    const wasPendingSeek = this.pendingSeekTimestamp !== null;
+    const seekReady =
+      this.pendingSeekTimestamp !== null &&
+      (Math.abs(currentTimestamp - this.pendingSeekTimestamp) < 0.35 ||
+        performance.now() >= this.pendingSeekDeadline);
 
     // Spotify's progress timestamp stops while paused, but the shared RAF loop
     // intentionally remains available for instant resume. Render that frozen
@@ -1344,12 +1390,6 @@ export default class LyricsRenderer {
       this.lastTimestamp >= 0 &&
       Math.abs(currentTimestamp - this.lastTimestamp) > 0.5;
 
-    // Read scrollTop before applyVirtualizationWindow can mount/unmount lines
-    // below — reading it after a mutation in the same task would force a
-    // synchronous layout flush instead of using the browser's normal,
-    // already-computed value from the previous frame.
-    this.frameScrollTop = this.simpleBar!.getScrollElement().scrollTop;
-
     // Recenter the mounted-detail window before animating so a newly-active line
     // (including after a big seek) is always mounted before we try to animate it.
     const refIdx = this.computeReferenceIndex(currentTimestamp);
@@ -1371,15 +1411,29 @@ export default class LyricsRenderer {
     this.lyricsEnded =
       currentTimestamp >= ((this.lyrics as any).endTime ?? Infinity);
 
-    if (this.needsScroll) {
+    if (this.needsScroll && this.pendingSeekTimestamp === null) {
       this.needsScroll = false;
+      this.scrollToActive();
+    }
+
+    if (seekReady) {
+      this.pendingSeekTimestamp = null;
+      this.pendingSeekDeadline = 0;
+      this.needsScroll = false;
+      // The clicked target may remain in the same line as the old position;
+      // force one fresh target calculation after the seek nevertheless.
+      this.lastActiveIdx = -1;
       this.scrollToActive();
     }
 
     this.updateBlur(frame.ctx);
 
 		if (this.scroller) {
-			if (!this.autoScrollBlocked) {
+			if (this.pendingSeekTimestamp !== null) {
+				// Keep the existing spring from continuing toward the old active line
+				// while Spotify has not yet delivered the clicked seek position.
+				this.scroller.syncPosition(this.frameScrollTop);
+			} else if (!this.autoScrollBlocked) {
 				this.programmaticScroll = true;
 				this.scroller.update(deltaTime);
 				this.programmaticScroll = false;
@@ -1392,7 +1446,7 @@ export default class LyricsRenderer {
       this.updateSyncButtonVisibility();
     }
 
-		if (skipped) {
+		if (skipped && !wasPendingSeek) {
       this.lyricsEnded = false;
       this.unblockAndScrollToActive();
       renderLoop.ensureRunning();
@@ -1693,15 +1747,10 @@ export default class LyricsRenderer {
               "transform",
               `translate3d(0, calc(var(--vl-default-font-size) * ${values.yOffset * 2}), 0)`,
             );
-            setCachedStyle(
+            setCachedGlow(
               ltr.span,
-              "--text-shadow-blur-radius",
-              `${4 + 12 * values.glow * gi}px`,
-            );
-            setCachedStyle(
-              ltr.span,
-              "--text-shadow-opacity",
-              `${Math.min(values.glow * 185 * gi, 100)}%`,
+              4 + 12 * values.glow * gi,
+              values.glow * 185 * gi,
             );
           }
         }
@@ -1718,27 +1767,17 @@ export default class LyricsRenderer {
             `translate3d(0, calc(var(--vl-default-font-size) * ${v.yOffset}), 0)`,
           );
           setCachedInline(dot.span, "opacity", `${v.opacity}`);
-          setCachedStyle(
-            dot.span,
-            "--text-shadow-blur-radius",
-            `${4 + 6 * v.glow}px`,
-          );
-          setCachedStyle(dot.span, "--text-shadow-opacity", `${v.glow * 90}%`);
+          setCachedGlow(dot.span, 4 + 6 * v.glow, v.glow * 90);
         }
       }
       const lyricSpan = line.lyricSpanCache;
       if (lyricSpan && line.glowSpring && (springConfig.enabled || ctx.animationStyle === "wobble")) {
         const gi = ctx.glowIntensity;
         const currentGlow = line.glowSpring.Step(deltaTime);
-        setCachedStyle(
+        setCachedGlow(
           lyricSpan,
-          "--text-shadow-blur-radius",
-          `${4 + 8 * currentGlow * gi}px`,
-        );
-        setCachedStyle(
-          lyricSpan,
-          "--text-shadow-opacity",
-          `${Math.min(currentGlow * 50 * gi, 100)}%`,
+          4 + 8 * currentGlow * gi,
+          currentGlow * 50 * gi,
         );
       }
     }
@@ -2158,15 +2197,10 @@ export default class LyricsRenderer {
               "transform",
               `translate3d(0, calc(var(--vl-default-font-size) * ${values.yOffset * 2}), 0)`,
             );
-            setCachedStyle(
+            setCachedGlow(
               ltr.span,
-              "--text-shadow-blur-radius",
-              `${4 + 12 * values.glow * gi}px`,
-            );
-            setCachedStyle(
-              ltr.span,
-              "--text-shadow-opacity",
-              `${Math.min(values.glow * 185 * gi, 100)}%`,
+              4 + 12 * values.glow * gi,
+              values.glow * 185 * gi,
             );
           }
         }
@@ -2215,12 +2249,7 @@ export default class LyricsRenderer {
             `translate3d(0, calc(var(--vl-default-font-size) * ${v.yOffset}), 0)`,
           );
           setCachedInline(dot.span, "opacity", `${v.opacity}`);
-          setCachedStyle(
-            dot.span,
-            "--text-shadow-blur-radius",
-            `${4 + 6 * v.glow}px`,
-          );
-          setCachedStyle(dot.span, "--text-shadow-opacity", `${v.glow * 90}%`);
+          setCachedGlow(dot.span, 4 + 6 * v.glow, v.glow * 90);
         }
       }
       if (line.duration > 0) {
@@ -2237,15 +2266,10 @@ export default class LyricsRenderer {
             const targetGlow = ctx.splines.LineGlow.at(lineProgress);
             line.glowSpring.SetGoal(targetGlow, replacePos);
             const currentGlow = line.glowSpring.Step(deltaTime);
-            setCachedStyle(
+            setCachedGlow(
               lyricSpan,
-              "--text-shadow-blur-radius",
-              `${4 + 8 * currentGlow * gi}px`,
-            );
-            setCachedStyle(
-              lyricSpan,
-              "--text-shadow-opacity",
-              `${Math.min(currentGlow * 50 * gi, 100)}%`,
+              4 + 8 * currentGlow * gi,
+              currentGlow * 50 * gi,
             );
           }
         }
@@ -2269,15 +2293,21 @@ export default class LyricsRenderer {
   private updateBlur(ctx?: FrameCtx): void {
     if (this.lyrics.type === "Static") return;
 
+    const clearLineBlur = (line: LineInfo): void => {
+      clearCachedStyle(line.container, "--vl-blur");
+      line.container.style.removeProperty("--vl-blur");
+      // setCachedInline and setCachedStyle share the same property cache. Clear
+      // opacity there too or a later identical opacity can be skipped while the
+      // real inline style is still blank.
+      clearCachedStyle(line.container, "opacity");
+      line.container.style.opacity = "";
+    };
+
     if (!ctx?.blurEnabled) {
       if (this.lastBlurCleared) return;
       this.lastBlurCleared = true;
-      for (let i = 0; i < this.lines.length; i++) {
-        const line = this.lines[i];
-        clearCachedStyle(line.container, "--vl-blur");
-        line.container.style.removeProperty("--vl-blur");
-        line.container.style.opacity = "";
-      }
+      this.lastBlurRenderKey = null;
+      for (const line of this.lines) clearLineBlur(line);
       return;
     }
     this.lastBlurCleared = false;
@@ -2292,43 +2322,32 @@ export default class LyricsRenderer {
       }
     }
 
-    if (activeStart === -1 && this.lastActiveIdx >= 0) {
-      activeStart = this.lastActiveIdx;
-      activeEnd = this.lastActiveIdx;
-    }
-
     if (activeStart >= 0) {
-      this.lastActiveIdx = activeStart;
+      this.lastBlurActiveStart = activeStart;
+      this.lastBlurActiveEnd = activeEnd;
+    } else if (this.lastBlurActiveStart >= 0) {
+      activeStart = this.lastBlurActiveStart;
+      activeEnd = this.lastBlurActiveEnd;
     }
 
     const reset = this.autoScrollBlocked;
     const strengthMul = ctx.blurStrengthMul;
     const BLUR_RANGE = 20;
 
+    // Line states and blur settings change far less often than animation
+    // frames. Do no DOM work while the desired blur field is unchanged.
+    const renderKey = `${activeStart}:${activeEnd}:${reset ? 1 : 0}:${strengthMul}`;
+    if (renderKey === this.lastBlurRenderKey) return;
+    this.lastBlurRenderKey = renderKey;
+
     const blurStart = Math.max(0, (activeStart >= 0 ? activeStart : 0) - BLUR_RANGE);
     const blurEnd = Math.min(this.lines.length, (activeEnd >= 0 ? activeEnd : 0) + BLUR_RANGE + 1);
 
-    // Clear styles on lines outside the blur window
-    for (let i = 0; i < blurStart; i++) {
-      const line = this.lines[i];
-      clearCachedStyle(line.container, "--vl-blur");
-      line.container.style.removeProperty("--vl-blur");
-      line.container.style.opacity = "";
-    }
-    for (let i = blurEnd; i < this.lines.length; i++) {
-      const line = this.lines[i];
-      clearCachedStyle(line.container, "--vl-blur");
-      line.container.style.removeProperty("--vl-blur");
-      line.container.style.opacity = "";
-    }
-
-    for (let i = blurStart; i < blurEnd; i++) {
+    for (let i = 0; i < this.lines.length; i++) {
       const line = this.lines[i];
 
-      if (reset || activeStart === -1) {
-        clearCachedStyle(line.container, "--vl-blur");
-        line.container.style.removeProperty("--vl-blur");
-        line.container.style.opacity = "";
+      if (reset || activeStart === -1 || i < blurStart || i >= blurEnd) {
+        clearLineBlur(line);
         continue;
       }
 
@@ -2358,6 +2377,10 @@ export default class LyricsRenderer {
   }
 
 	private scrollToActive(instant?: boolean): void {
+		// A lyric click must not scroll toward the old active line while Spotify
+		// is still applying its seek. seekToLyricTime releases this guard only
+		// after the new timestamp has reached the renderer.
+		if (this.pendingSeekTimestamp !== null) return;
 		if (!get("autoScroll")) return;
 
 		let activeIdx = -1;
@@ -2381,9 +2404,7 @@ export default class LyricsRenderer {
 					clearTimeout(this.userScrollTimer);
 					this.userScrollTimer = null;
 				}
-				if (this.scroller && this.simpleBar) {
-					this.scroller.syncPosition(this.simpleBar.getScrollElement().scrollTop);
-				}
+				this.syncScrollPosition();
 			} else {
 				return;
 			}
@@ -2396,6 +2417,7 @@ export default class LyricsRenderer {
 			if (this.lyricsEnded) {
 				const scrollEl = this.simpleBar!.getScrollElement();
 				this.programmaticScroll = true;
+				this.frameScrollTop = this.cachedMaxScroll;
 				scrollEl.scrollTop = scrollEl.scrollHeight;
 				this.programmaticScroll = false;
 				return;
@@ -2432,7 +2454,7 @@ export default class LyricsRenderer {
 		const scrollEl = this.simpleBar!.getScrollElement();
 		const containerHeight =
 			this.cachedContainerHeight || scrollEl.clientHeight;
-		const scrollTop = scrollEl.scrollTop;
+		const scrollTop = this.frameScrollTop;
 
 		const lineRelativeTop = activeLine.cachedOffsetTop - scrollTop;
 		const lineHeight = activeLine.cachedVocalsHeight;
@@ -2462,7 +2484,14 @@ export default class LyricsRenderer {
 		}
 
 		this.programmaticScroll = true;
-		scrollEl.scrollTop = Math.round(targetTop);
+		const nextScrollTop = Math.max(
+			0,
+			Math.min(this.cachedMaxScroll, Math.round(targetTop)),
+		);
+		if (nextScrollTop !== this.frameScrollTop) {
+			this.frameScrollTop = nextScrollTop;
+			scrollEl.scrollTop = nextScrollTop;
+		}
 		this.programmaticScroll = false;
 	}
 

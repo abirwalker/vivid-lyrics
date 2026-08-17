@@ -1,4 +1,4 @@
-import { setCachedStyle, setCachedInline } from "./style-cache";
+import { setCachedStyle, setCachedInline, setCachedGlow } from "./style-cache";
 import { makeSpline } from "./spicy-spring";
 
 const WOBBLE_WORDS_AHEAD = 1;
@@ -731,15 +731,10 @@ export function animateWobbleLine(
       "--char-progress",
       `${pct.toFixed(1)}%`,
     );
-    setCachedStyle(
+    setCachedGlow(
       el,
-      "--text-shadow-blur-radius",
-      `${(4 + 12 * glowAlpha * glowIntensity).toFixed(2)}px`,
-    );
-    setCachedStyle(
-      el,
-      "--text-shadow-opacity",
-      `${Math.min(glowAlpha * 185 * glowIntensity, 100).toFixed(1)}%`,
+      4 + 12 * glowAlpha * glowIntensity,
+      glowAlpha * 185 * glowIntensity,
     );
   }
 }

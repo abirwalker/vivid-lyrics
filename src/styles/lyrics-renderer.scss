@@ -15,7 +15,9 @@
         overflow-x: hidden !important;
         scrollbar-width: none !important;
         -ms-overflow-style: none !important;
-        will-change: transform;
+        // This element scrolls natively; promoting it as a transform layer
+        // makes Chromium continuously layerize the entire lyric surface.
+        will-change: scroll-position;
 
         &::-webkit-scrollbar {
             display: none !important;
@@ -345,6 +347,7 @@ html.vl-centered-text .VividLyrics-FullscreenContent .VL-FS-Line,
 
 .Letter {
     display: inline-block;
+    position: relative;
     // Grow from the left so scaling words push successors instead of
     // overlapping their left neighbor (visible with adjacent emphasized words).
     transform-origin: left center;
@@ -356,11 +359,29 @@ html.vl-centered-text .VividLyrics-FullscreenContent .VL-FS-Line,
     background-clip: text;
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
+    // Keep the distance blur and soft base halo on the glyph. The animated
+    // spring glow is rendered by a duplicate compositor layer below, avoiding
+    // per-frame Skia text-shadow rerasterization.
     text-shadow:
         0 0 var(--vl-blur, 0) var(--vl-text-dim),
-        0 0 6px rgba(255, 255, 255, 0.15),
-        0 0 var(--text-shadow-blur-radius, 0px)
-            rgb(255 255 255 / var(--text-shadow-opacity, 0%));
+        0 0 6px rgba(255, 255, 255, 0.15);
+
+    &::after {
+        content: attr(data-vl-text);
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        color: white;
+        background: none;
+        -webkit-text-fill-color: white;
+        opacity: var(--text-shadow-opacity, 0%);
+        filter: blur(var(--vl-glow-filter-radius, 2px));
+        transform: translateZ(0);
+    }
+}
+
+.VocalsGroup.Active .Letter::after {
+    will-change: filter, opacity;
 }
 
 .VocalsGroup.InterludeLine {
