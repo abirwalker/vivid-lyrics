@@ -153,7 +153,7 @@ function parseLineSegments(text: string): { text: string; isBackground: boolean 
   let lastIndex = 0;
 
   // Match (round), （full-width）, [square], 【cjk】, ［full-width square］
-  const BRACKET_REGEX = /([(（【［\[][^)）】］\]]+[)）】］\]])/g;
+  const BRACKET_REGEX = /([([（【［][^)）】］\]]+[)）】］\]])/g;
 
   for (const match of text.matchAll(BRACKET_REGEX)) {
     const matchIndex = match.index;
@@ -182,7 +182,7 @@ function parseLineSegments(text: string): { text: string; isBackground: boolean 
 
 function stripOuterBrackets(text: string): string {
   const trimmed = text.trim();
-  const match = trimmed.match(/^[(（【［\[]([\s\S]*)[)）】］\]]$/);
+  const match = trimmed.match(/^[([（【［]([\s\S]*)[)）】］\]]$/);
   return match ? match[1].trim() : trimmed;
 }
 
@@ -845,7 +845,7 @@ export default class LyricsRenderer {
           const syllable = syllables[index];
           let text = displayText(syllable);
           if (stripBrackets) {
-            if (index === 0) text = text.replace(/^[(（【［\[]/, "");
+            if (index === 0) text = text.replace(/^[([（【［]/, "");
             if (index === syllables.length - 1) text = text.replace(/[)）】］\]]$/, "");
           }
           const syllableStart = syllable.StartTime ?? track.StartTime ?? startTime;

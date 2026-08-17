@@ -101,7 +101,7 @@ class RenderLoopCoordinator {
     };
 
     let anyActive = false;
-    for (const [id, listener] of this.listeners) {
+    for (const listener of this.listeners.values()) {
       const active = listener(frame);
       if (active) anyActive = true;
     }

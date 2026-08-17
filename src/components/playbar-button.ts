@@ -36,7 +36,7 @@ function makeBtn(icon: string, title: string, onClick: () => void): HTMLButtonEl
   const sp = Spicetify as any;
   if (sp?.Tippy) {
     sp.Tippy(btn, {
-      ...(sp.TippyProps?.default ?? sp.TippyProps ?? {}),
+      ...(sp.TippyProps?.default ?? sp.TippyProps),
       content: title,
     });
   }
