@@ -18,6 +18,7 @@ import {
   RomanizeOnIcon,
   RomanizeOffIcon,
 } from "../shared/svg-icons";
+import { createFluidMeshBackground } from "../fluid-mesh-bg";
 import "../../styles/fullscreen.scss";
 
 let portal: HTMLDivElement | null = null;
@@ -252,6 +253,7 @@ export function setupFullscreen(): void {
   const lyricsDiv = document.createElement("div");
   lyricsDiv.className = "VL-FS-Lyrics";
 
+  content.appendChild(createFluidMeshBackground());
   content.appendChild(controlsContainer);
   content.appendChild(lyricsDiv);
   portal.appendChild(content);

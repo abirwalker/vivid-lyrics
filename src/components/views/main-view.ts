@@ -21,6 +21,7 @@ import {
   RomanizeOnIcon,
   RomanizeOffIcon,
 } from "../shared/svg-icons";
+import { createFluidMeshBackground } from "../fluid-mesh-bg";
 
 const BASE_ROUTE = "/vivid-lyrics";
 
@@ -175,6 +176,7 @@ function open(): void {
   });
   controls.appendChild(shrinkBtn);
 
+  pageContainer.appendChild(createFluidMeshBackground());
   pageContainer.appendChild(content);
   pageContainer.appendChild(controls);
 

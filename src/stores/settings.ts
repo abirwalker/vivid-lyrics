@@ -37,7 +37,7 @@ const defaults: Settings = {
   glowIntensity: 1.0,
   bounceStrength: 1.0,
   spotlightProbability: 0.15,
-  backgroundMode: "none",
+  backgroundMode: "dynamic",
   autoScroll: true,
   blurEnabled: true,
   blurStrength: "normal",

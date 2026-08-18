@@ -380,8 +380,9 @@ export function setupDynamicColors(): void {
   async function updatePalette(retries = 6) {
     const isAccentText = get("accentColor");
     const isBloomAccented = get("bloomColor");
+    const isBgActive = get("backgroundMode") !== "none";
 
-    if (!isAccentText && !isBloomAccented) {
+    if (!isAccentText && !isBloomAccented && !isBgActive) {
       clearPalette();
       return;
     }
@@ -405,8 +406,9 @@ export function setupDynamicColors(): void {
 
     const isAccentTextNow = get("accentColor");
     const isBloomAccentedNow = get("bloomColor");
+    const isBgActiveNow = get("backgroundMode") !== "none";
 
-    if (!isAccentTextNow && !isBloomAccentedNow) {
+    if (!isAccentTextNow && !isBloomAccentedNow && !isBgActiveNow) {
       clearPalette();
       return;
     }
@@ -440,7 +442,12 @@ export function setupDynamicColors(): void {
 
   Spicetify?.Player?.addEventListener("songchange", () => updatePalette());
   onSettingsChange(({ key }) => {
-    if (key === "accentColor" || key === "bloomColor" || key === null) {
+    if (
+      key === "accentColor" ||
+      key === "bloomColor" ||
+      key === "backgroundMode" ||
+      key === null
+    ) {
       updatePalette();
     }
   });

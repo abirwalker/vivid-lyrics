@@ -258,6 +258,19 @@ function buildContent(): HTMLElement {
         control: makeToggle(s.accentColor, (v) => set("accentColor", v)),
       },
       {
+        label: "Background Mode",
+        desc: "Animated fluid mesh background from album colors",
+        control: makeSelect(
+          [
+            { label: "Dynamic Mesh", value: "dynamic" },
+            { label: "Static Color", value: "static" },
+            { label: "Off (Pure Black)", value: "none" },
+          ],
+          s.backgroundMode,
+          (v) => set("backgroundMode", v as Settings["backgroundMode"]),
+        ),
+      },
+      {
         label: "Font Size",
         desc: "Lyrics text size",
         control: makeSelect(
@@ -315,7 +328,7 @@ function buildContent(): HTMLElement {
       },
       {
         label: "Strip Background Brackets",
-        desc: "Display backing vocals without outer parentheses (Apple Music style)",
+        desc: "Display backing vocals without outer parentheses",
         control: makeToggle(s.stripBackgroundBrackets, (v) => set("stripBackgroundBrackets", v)),
       },
     ]],
@@ -455,11 +468,6 @@ function buildContent(): HTMLElement {
       },
     ]],
     ["Coming Soon", [
-      {
-        label: "Background Mode",
-        desc: "Dynamic background animation",
-        control: makeSoon(),
-      },
       {
         label: "Spotlight Words",
         desc: "Random words get highlighted",
