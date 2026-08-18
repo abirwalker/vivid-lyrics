@@ -85,6 +85,97 @@ function hslToHex(h: number, s: number, l: number): string {
   return `#${f(0)}${f(8)}${f(4)}`;
 }
 
+type SwatchName =
+  | "Vibrant"
+  | "LightVibrant"
+  | "DarkVibrant"
+  | "Muted"
+  | "LightMuted"
+  | "DarkMuted";
+
+interface AccentCandidate {
+  name: SwatchName;
+  hex: string;
+  population: number;
+  saturation: number;
+  lightness: number;
+  roleBonus: number;
+}
+
+const SWATCH_ROLE_BONUS: Record<SwatchName, number> = {
+  Vibrant: 24,
+  LightVibrant: 18,
+  DarkVibrant: 16,
+  Muted: 6,
+  LightMuted: 3,
+  DarkMuted: 2,
+};
+
+function relativeLuminance(hex: string): number {
+  const clean = hex.replace("#", "");
+  const channels = [0, 2, 4].map((offset) => parseInt(clean.slice(offset, offset + 2), 16) / 255);
+  const [r, g, b] = channels.map((channel) =>
+    channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4,
+  );
+  return r * 0.2126 + g * 0.7152 + b * 0.0722;
+}
+
+function contrastRatio(first: string, second: string): number {
+  const lighter = Math.max(relativeLuminance(first), relativeLuminance(second));
+  const darker = Math.min(relativeLuminance(first), relativeLuminance(second));
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+function cssColorToHex(color: string): string | null {
+  const value = color.trim();
+  if (/^#[\da-f]{6}$/i.test(value)) return value;
+  if (/^#[\da-f]{3}$/i.test(value)) {
+    return `#${value.slice(1).split("").map((part) => part + part).join("")}`;
+  }
+
+  const channels = value.match(/^rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)/i);
+  if (!channels) return null;
+  return `#${channels
+    .slice(1, 4)
+    .map((channel) => Math.max(0, Math.min(255, Math.round(Number(channel)))).toString(16).padStart(2, "0"))
+    .join("")}`;
+}
+
+function getLyricsBackground(): string {
+  if (typeof document === "undefined") return "#121212";
+
+  const styles = getComputedStyle(document.documentElement);
+  for (const property of ["--background-tinted-base", "--background-base", "--spice-main"]) {
+    const color = cssColorToHex(styles.getPropertyValue(property));
+    if (color) return color;
+  }
+  return "#121212";
+}
+
+/** Adjust only as much lightness as needed for readable highlighted lyric text. */
+function ensureTextContrast(hex: string, background: string, minimumRatio = 4.5): string {
+  if (contrastRatio(hex, background) >= minimumRatio) return hex;
+
+  const [h, s, originalLightness] = hexToHsl(hex);
+  for (let distance = 1; distance <= 100; distance++) {
+    const lighter = originalLightness + distance;
+    const darker = originalLightness - distance;
+
+    if (lighter <= 100) {
+      const candidate = hslToHex(h, s, lighter);
+      if (contrastRatio(candidate, background) >= minimumRatio) return candidate;
+    }
+    if (darker >= 0) {
+      const candidate = hslToHex(h, s, darker);
+      if (contrastRatio(candidate, background) >= minimumRatio) return candidate;
+    }
+  }
+
+  return contrastRatio("#ffffff", background) >= contrastRatio("#000000", background)
+    ? "#ffffff"
+    : "#000000";
+}
+
 /**
  * Intelligent color decider:
  * Evaluates extracted swatches using both chromatic energy and pixel population
@@ -92,63 +183,82 @@ function hslToHex(h: number, s: number, l: number): string {
  * and select the true dominant artistic accent color.
  */
 function pickAccentColor(palette: any): string {
-  const swatches = [
-    palette.Vibrant,
-    palette.Muted,
-    palette.LightVibrant,
-    palette.DarkVibrant,
-    palette.LightMuted,
-    palette.DarkMuted,
-  ].filter((s): s is NonNullable<typeof s> => Boolean(s && s.hex));
+  const candidates = (Object.keys(SWATCH_ROLE_BONUS) as SwatchName[])
+    .map((name): AccentCandidate | null => {
+      const swatch = palette[name];
+      if (!swatch?.hex) return null;
+      const [, saturation, lightness] = hexToHsl(swatch.hex);
+      return {
+        name,
+        hex: swatch.hex,
+        population: Math.max(swatch.population || 1, 1),
+        saturation,
+        lightness,
+        roleBonus: SWATCH_ROLE_BONUS[name],
+      };
+    })
+    .filter((candidate): candidate is AccentCandidate => candidate !== null);
 
-  if (swatches.length === 0) return "#ffffff";
+  if (candidates.length === 0) return "#ffffff";
 
-  // Total population across valid swatches to gauge real visual presence
-  const totalPop = swatches.reduce((sum, s) => sum + (s.population || 1), 0);
+  // Semantic swatch populations are relative signals, not a literal percentage
+  // of every image pixel, so use adaptive thresholds rather than one hard cutoff.
+  const totalPopulation = candidates.reduce((sum, candidate) => sum + candidate.population, 0);
+  const dominant = candidates.reduce((largest, candidate) =>
+    candidate.population > largest.population ? candidate : largest,
+  );
 
-  let bestHex = swatches[0].hex;
+  let winner: AccentCandidate | null = null;
   let highestScore = -1;
 
-  for (const sObj of swatches) {
-    const hex = sObj.hex;
-    const pop = sObj.population || 1;
-    const popRatio = pop / totalPop;
+  for (const candidate of candidates) {
+    const popRatio = candidate.population / totalPopulation;
 
-    // Discard only microscopic noise artifacts (< 0.8% of colored pixels or tiny pixel counts)
-    if (popRatio < 0.008 && swatches.length > 1) {
+    // Always reject microscopic clusters, but allow a small cluster through when
+    // it is vivid enough to plausibly be intentional typography or artwork.
+    if (candidates.length > 1 && (popRatio < 0.003 || (popRatio < 0.008 && candidate.saturation < 55))) {
       continue;
     }
 
-    const [, s, l] = hexToHsl(hex);
+    let score =
+      candidate.saturation * 1.6 +
+      Math.sqrt(popRatio) * 35 +
+      candidate.roleBonus +
+      (25 - Math.min(Math.abs(candidate.lightness - 54), 25));
 
-    // Skip grayscale/monochrome noise or near-black shadows (L < 18%)
-    if (s < 12 || l < 18) continue;
+    // Soft penalties keep background-like colors available for genuinely
+    // monochrome covers without letting them beat a meaningful chromatic accent.
+    if (candidate.saturation < 18) score -= 50;
+    if (candidate.lightness < 12) score -= 45;
+    if (candidate.lightness > 92) score -= 35;
 
-    // Chromatic saturation is the primary driver (so green text & golden clouds win)
-    // with gentle population tie-breaking
-    let score = s * 2.0 + Math.sqrt(popRatio) * 10;
-    if (l >= 30 && l <= 68) score += 25; // Ideal rich saturation range
+    // Reward a small artistic focal point when it is substantially more colorful
+    // than the cover's dominant semantic swatch.
+    if (candidate.name.includes("Vibrant") && candidate.saturation > dominant.saturation + 25) {
+      score += 20;
+    }
 
     if (score > highestScore) {
       highestScore = score;
-      bestHex = hex;
+      winner = candidate;
     }
   }
 
-  const [h, s, l] = hexToHsl(bestHex);
-
-  if (s < 12) return "#ffffff";
-
-  // If moderately dark (L < 40% on dark cards), lift to rich 54%
-  if (l < 40) {
-    return hslToHex(h, Math.max(s, 50), 54);
-  }
-  // If overly pale/washed-out (L > 65%), tone down to rich 54% for deep color saturation
-  if (l > 65) {
-    return hslToHex(h, Math.max(s, 50), 54);
+  // Never accidentally return a candidate that the filters rejected.
+  if (!winner || winner.saturation < 12) {
+    return ensureTextContrast("#ffffff", getLyricsBackground());
   }
 
-  return bestHex;
+  const [h, saturation, lightness] = hexToHsl(winner.hex);
+  let normalized = winner.hex;
+
+  if (lightness < 40 || lightness > 65) {
+    // Do not invent strong color in genuinely muted artwork.
+    const normalizedSaturation = saturation < 20 ? saturation : Math.max(saturation, 42);
+    normalized = hslToHex(h, normalizedSaturation, 54);
+  }
+
+  return ensureTextContrast(normalized, getLyricsBackground());
 }
 
 /**
@@ -160,7 +270,12 @@ export async function extractPalette(rawUrl: string | null | undefined): Promise
   if (!imageUrl) return DEFAULT_PALETTE;
 
   const cached = paletteCache.get(imageUrl);
-  if (cached) return cached;
+  if (cached) {
+    // Refresh insertion order so Map eviction behaves as a true LRU cache.
+    paletteCache.delete(imageUrl);
+    paletteCache.set(imageUrl, cached);
+    return cached;
+  }
 
   try {
     const img = await loadImage(imageUrl);
@@ -219,9 +334,14 @@ export async function extractPalette(rawUrl: string | null | undefined): Promise
  * art palette variables to the document root.
  */
 export function setupDynamicColors(): void {
+  let requestGeneration = 0;
+
   async function updatePalette() {
+    const generation = ++requestGeneration;
     const item = Spicetify?.Player?.data?.item;
-    const meta = item?.metadata as Record<string, string | undefined> | undefined;
+    // Spicetify's metadata type does not declare every image-size key exposed at runtime.
+    const meta =
+      (item as unknown as { metadata?: Record<string, string | undefined> } | undefined)?.metadata ?? {};
     const rawUrl =
       meta?.image_xlarge_url ||
       meta?.image_large_url ||
@@ -231,6 +351,8 @@ export function setupDynamicColors(): void {
       (item as any)?.images?.[0]?.url;
 
     const palette = await extractPalette(rawUrl);
+    if (generation !== requestGeneration) return;
+
     const root = document.documentElement;
 
     root.style.setProperty("--vl-accent-color", palette.accent);
@@ -245,4 +367,3 @@ export function setupDynamicColors(): void {
   Spicetify?.Player?.addEventListener("songchange", updatePalette);
   updatePalette();
 }
-
