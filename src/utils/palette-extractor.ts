@@ -1,4 +1,5 @@
 import { Vibrant } from "node-vibrant/browser";
+import { get, onSettingsChange } from "../stores/settings";
 
 export interface PaletteColors {
   vibrant: string;
@@ -11,13 +12,13 @@ export interface PaletteColors {
 }
 
 const DEFAULT_PALETTE: PaletteColors = {
-  vibrant: "#1db954",
-  darkVibrant: "#121212",
-  lightVibrant: "#1ed760",
-  muted: "#535353",
-  darkMuted: "#181818",
+  vibrant: "#ffffff",
+  darkVibrant: "#181818",
+  lightVibrant: "#ffffff",
+  muted: "#757575",
+  darkMuted: "#121212",
   lightMuted: "#b3b3b3",
-  accent: "#1ed760",
+  accent: "#ffffff",
 };
 
 // In-memory LRU cache to avoid re-extracting palettes for visited tracks
@@ -329,41 +330,120 @@ export async function extractPalette(rawUrl: string | null | undefined): Promise
   }
 }
 
+function hexToRgbChannels(hex: string): string {
+  let clean = hex.replace("#", "");
+  if (clean.length === 3) {
+    clean = clean.split("").map((c) => c + c).join("");
+  }
+  const r = parseInt(clean.slice(0, 2), 16) || 255;
+  const g = parseInt(clean.slice(2, 4), 16) || 255;
+  const b = parseInt(clean.slice(4, 6), 16) || 255;
+  return `${r} ${g} ${b}`;
+}
+
+function getTrackImageUrl(): string | undefined {
+  const item = Spicetify?.Player?.data?.item;
+  // Spicetify's metadata type does not declare every image-size key exposed at runtime.
+  const meta =
+    (item as unknown as { metadata?: Record<string, string | undefined> } | undefined)?.metadata ?? {};
+  return (
+    meta?.image_xlarge_url ||
+    meta?.image_large_url ||
+    meta?.image_url ||
+    meta?.image_small_url ||
+    (item as any)?.album?.images?.[0]?.url ||
+    (item as any)?.images?.[0]?.url
+  );
+}
+
 /**
- * Initializes automatic songchange listening and applies extracted album
- * art palette variables to the document root.
+ * Initializes automatic songchange and settings listening, applying extracted album
+ * art palette variables to the document root when enabled.
  */
 export function setupDynamicColors(): void {
   let requestGeneration = 0;
 
-  async function updatePalette() {
+  function clearPalette(): void {
+    const root = document.documentElement;
+    root.style.removeProperty("--vl-accent-color");
+    root.style.removeProperty("--vl-accent-color-rgb");
+    root.style.removeProperty("--vl-accent-vibrant");
+    root.style.removeProperty("--vl-accent-dark-vibrant");
+    root.style.removeProperty("--vl-accent-light-vibrant");
+    root.style.removeProperty("--vl-accent-muted");
+    root.style.removeProperty("--vl-accent-dark-muted");
+    root.style.removeProperty("--vl-accent-light-muted");
+    root.style.removeProperty("--vl-bloom-color");
+    root.style.removeProperty("--vl-bloom-color-rgb");
+  }
+
+  async function updatePalette(retries = 6) {
+    const isAccentText = get("accentColor");
+    const isBloomAccented = get("bloomColor");
+
+    if (!isAccentText && !isBloomAccented) {
+      clearPalette();
+      return;
+    }
+
     const generation = ++requestGeneration;
-    const item = Spicetify?.Player?.data?.item;
-    // Spicetify's metadata type does not declare every image-size key exposed at runtime.
-    const meta =
-      (item as unknown as { metadata?: Record<string, string | undefined> } | undefined)?.metadata ?? {};
-    const rawUrl =
-      meta?.image_xlarge_url ||
-      meta?.image_large_url ||
-      meta?.image_url ||
-      meta?.image_small_url ||
-      (item as any)?.album?.images?.[0]?.url ||
-      (item as any)?.images?.[0]?.url;
+    const rawUrl = getTrackImageUrl();
+
+    // Guard: If metadata hasn't arrived from Spotify yet when songchange fires,
+    // retry with exponential backoff instead of falling back to default color prematurely.
+    if (!rawUrl && retries > 0) {
+      setTimeout(() => {
+        if (generation === requestGeneration) {
+          updatePalette(retries - 1);
+        }
+      }, 100);
+      return;
+    }
 
     const palette = await extractPalette(rawUrl);
     if (generation !== requestGeneration) return;
 
-    const root = document.documentElement;
+    const isAccentTextNow = get("accentColor");
+    const isBloomAccentedNow = get("bloomColor");
 
-    root.style.setProperty("--vl-accent-color", palette.accent);
+    if (!isAccentTextNow && !isBloomAccentedNow) {
+      clearPalette();
+      return;
+    }
+
+    const root = document.documentElement;
+    const accentRgb = hexToRgbChannels(palette.accent);
+
+    if (isAccentTextNow) {
+      root.style.setProperty("--vl-accent-color", palette.accent);
+      root.style.setProperty("--vl-accent-color-rgb", accentRgb);
+    } else {
+      root.style.removeProperty("--vl-accent-color");
+      root.style.removeProperty("--vl-accent-color-rgb");
+    }
+
     root.style.setProperty("--vl-accent-vibrant", palette.vibrant);
     root.style.setProperty("--vl-accent-dark-vibrant", palette.darkVibrant);
     root.style.setProperty("--vl-accent-light-vibrant", palette.lightVibrant);
     root.style.setProperty("--vl-accent-muted", palette.muted);
     root.style.setProperty("--vl-accent-dark-muted", palette.darkMuted);
     root.style.setProperty("--vl-accent-light-muted", palette.lightMuted);
+
+    if (isBloomAccentedNow) {
+      root.style.setProperty("--vl-bloom-color", palette.accent);
+      root.style.setProperty("--vl-bloom-color-rgb", accentRgb);
+    } else {
+      root.style.setProperty("--vl-bloom-color", "rgba(255, 255, 255, 1)");
+      root.style.setProperty("--vl-bloom-color-rgb", "255 255 255");
+    }
   }
 
-  Spicetify?.Player?.addEventListener("songchange", updatePalette);
+  Spicetify?.Player?.addEventListener("songchange", () => updatePalette());
+  onSettingsChange(({ key }) => {
+    if (key === "accentColor" || key === "bloomColor" || key === null) {
+      updatePalette();
+    }
+  });
+
   updatePalette();
 }

@@ -2,6 +2,8 @@ import storage from "../utils/storage";
 import { on, off, emit } from "../utils/events";
 
 export type Settings = {
+  accentColor: boolean;
+  bloomColor: boolean;
   glowIntensity: number;
   bounceStrength: number;
   spotlightProbability: number;
@@ -30,6 +32,8 @@ export type Settings = {
 };
 
 const defaults: Settings = {
+  accentColor: true,
+  bloomColor: true,
   glowIntensity: 1.0,
   bounceStrength: 1.0,
   spotlightProbability: 0.15,

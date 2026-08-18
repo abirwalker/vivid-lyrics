@@ -662,6 +662,7 @@ export default class LyricsRenderer {
             span.className = [
               "Syllable",
               s.IsPartOfWord ? "PartOfWord" : "",
+              emphasized ? "Emphasized" : "",
             ].filter(Boolean).join(" ");
             span.addEventListener("click", (e) => {
               if (!get("wordSeekEnabled")) return;
@@ -680,7 +681,7 @@ export default class LyricsRenderer {
 
               for (let i = 0; i < lettersArr.length; i++) {
                 const letterSpan = document.createElement("span");
-                letterSpan.className = "Letter";
+                letterSpan.className = emphasized ? "Letter Emphasized" : "Letter";
                 letterSpan.textContent = lettersArr[i];
                 letterSpan.dataset.vlText = lettersArr[i];
                 span.appendChild(letterSpan);
@@ -826,7 +827,7 @@ export default class LyricsRenderer {
 
       const lyricSpanCache = isSyllableType
         ? null
-        : (group.querySelector(".Lyric.Synced") as HTMLElement | null);
+        : (vocals.querySelector(".Lyric.Synced") as HTMLElement | null);
 
       // Background vocals are independent timed tracks. Render them as their
       // own subdued rows instead of folding them into the lead's word tree;
@@ -1776,8 +1777,8 @@ export default class LyricsRenderer {
         const currentGlow = line.glowSpring.Step(deltaTime);
         setCachedGlow(
           lyricSpan,
-          4 + 8 * currentGlow * gi,
-          currentGlow * 50 * gi,
+          2 + 4 * currentGlow * gi,
+          currentGlow * 25 * gi,
         );
       }
     }
@@ -2268,8 +2269,8 @@ export default class LyricsRenderer {
             const currentGlow = line.glowSpring.Step(deltaTime);
             setCachedGlow(
               lyricSpan,
-              4 + 8 * currentGlow * gi,
-              currentGlow * 50 * gi,
+              2 + 4 * currentGlow * gi,
+              currentGlow * 25 * gi,
             );
           }
         }

@@ -253,6 +253,11 @@ function buildContent(): HTMLElement {
   const sections: [string, { label: string; desc: string; control: HTMLElement; after?: HTMLElement; after2?: HTMLElement }[]][] = [
     ["Appearance", [
       {
+        label: "Accent Color",
+        desc: "Colorize lyrics highlight from album artwork",
+        control: makeToggle(s.accentColor, (v) => set("accentColor", v)),
+      },
+      {
         label: "Font Size",
         desc: "Lyrics text size",
         control: makeSelect(
@@ -398,6 +403,11 @@ function buildContent(): HTMLElement {
         control: makeSlider(0, 2, 0.1, s.glowIntensity, (v) =>
           set("glowIntensity", v),
         ),
+      },
+      {
+        label: "Accent Bloom",
+        desc: "Colorize lyrics glow/bloom from album artwork",
+        control: makeToggle(s.bloomColor, (v) => set("bloomColor", v)),
       },
       {
         label: "Blur Effect",
