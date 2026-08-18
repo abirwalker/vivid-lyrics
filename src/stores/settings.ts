@@ -28,6 +28,7 @@ export type Settings = {
   wordSeekEnabled: boolean;
   scrollMode: "smooth" | "legacy";
   stripBackgroundBrackets: boolean;
+  npvAmbiance: boolean;
   autoResumeDelay: number;
 };
 
@@ -58,6 +59,7 @@ const defaults: Settings = {
   wordSeekEnabled: true,
   scrollMode: "smooth",
   stripBackgroundBrackets: false,
+  npvAmbiance: true,
   autoResumeDelay: 10,
 };
 

@@ -271,6 +271,11 @@ function buildContent(): HTMLElement {
         ),
       },
       {
+        label: "Now Playing View Ambiance",
+        desc: "Enable fluid dynamic background on right sidebar panel",
+        control: makeToggle(s.npvAmbiance, (v) => set("npvAmbiance", v)),
+      },
+      {
         label: "Font Size",
         desc: "Lyrics text size",
         control: makeSelect(

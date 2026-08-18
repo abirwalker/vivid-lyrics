@@ -17,6 +17,7 @@ import {
   RomanizeOnIcon,
   RomanizeOffIcon,
 } from "../shared/svg-icons";
+import { createFluidMeshBackground } from "../fluid-mesh-bg";
 import "../../styles/lyrics.scss";
 
 const ANCHOR = ".main-nowPlayingView-nowPlayingWidget";
@@ -356,13 +357,46 @@ function observeNPV() {
   // make sure our card is still physically in the document — we do NOT
   // tear down the renderer, buttons, or listeners. This is what used to
   // cause the hover-lag/rebuild-thrash bug: a full destroy+rebuild was
-  // firing on every such swap, up to once a second while browsing.
+  let npvBg: HTMLDivElement | null = null;
+
+  const getNowPlayingAside = (): HTMLElement | null => {
+    return (
+      document.querySelector<HTMLElement>(".Root__right-sidebar aside.NowPlayingView") ??
+      document.querySelector<HTMLElement>(".Root__right-sidebar aside#Desktop_PanelContainer_Id:has(.main-nowPlayingView-coverArtContainer)") ??
+      document.querySelector<HTMLElement>(".Root__right-sidebar aside:has(.main-nowPlayingView-coverArtContainer)") ??
+      document.querySelector<HTMLElement>(".Root__right-sidebar aside")
+    );
+  };
+
+  function syncNPVBackground(): void {
+    const aside = getNowPlayingAside();
+    if (!aside) return;
+
+    const enabled = get("npvAmbiance") && get("backgroundMode") !== "none";
+
+    if (enabled) {
+      if (!npvBg || !aside.contains(npvBg)) {
+        npvBg?.remove();
+        npvBg = createFluidMeshBackground();
+        aside.classList.add("VL-NPV-Active");
+        aside.prepend(npvBg);
+      }
+    } else {
+      npvBg?.remove();
+      npvBg = null;
+      aside.classList.remove("VL-NPV-Active");
+      aside.querySelectorAll(".VL-FluidMeshBg").forEach((el) => el.remove());
+    }
+  }
+
   const reattach = (el: Element) => {
     current = el;
     suppressNativeLyrics(el.parentElement!);
     nativeObserver?.disconnect();
     nativeObserver = new MutationObserver(() => suppressNativeLyrics(el.parentElement!));
     nativeObserver.observe(el.parentElement!, { childList: true });
+
+    syncNPVBackground();
     ensureInDOM();
   };
 
@@ -373,6 +407,8 @@ function observeNPV() {
     clearTimeout(swapTimer);
     nativeObserver?.disconnect();
     nativeObserver = null;
+    npvBg?.remove();
+    npvBg = null;
     destroyRenderer();
     mountedLyrics = null;
     card?.remove();
@@ -426,6 +462,10 @@ function observeNPV() {
   });
 
   onSettingsChange(({ key }) => {
+    if (key === "npvAmbiance" || key === "backgroundMode" || key === null) {
+      syncNPVBackground();
+    }
+
     if (!getVisible()) return;
     if (
       key !== null &&
