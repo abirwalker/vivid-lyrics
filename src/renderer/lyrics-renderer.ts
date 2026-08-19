@@ -1466,25 +1466,41 @@ export default class LyricsRenderer {
         snapWobbleToIdle(line.backgroundWobbleChars);
       }
     } else if (line.isSyllableType && line.syllables.length > 0) {
+      // Keep every not-yet-sung syllable in the spring spline's real resting
+      // pose (normally scale 0.95). Resetting idle content to an unstyled 1:1
+      // pose makes it visibly shrink on the first active frame, especially
+      // after seeking backwards when a Sung line becomes Idle again.
+      const rest = getActiveSplines();
+      const restScale = rest.Scale.at(0);
+      const restYOffset = rest.YOffset.at(0);
+      const restGlow = rest.Glow.at(0);
+      const restTransform =
+        `translate3d(0, calc(var(--vl-default-font-size) * ${restYOffset * 2}), 0)`;
+      const letterRestScale = rest.LetterScale.at(0);
+      const letterRestYOffset = rest.LetterYOffset.at(0);
+      const letterRestGlow = rest.Glow.at(0);
+      const letterRestTransform =
+        `translate3d(0, calc(var(--vl-default-font-size) * ${letterRestYOffset * 2}), 0)`;
+
       for (const syl of line.syllables) {
         setCachedStyle(syl.span, "--char-progress", "-20%");
         if (syl.springs) {
-          syl.springs.Scale.SetGoal(1, true);
-          syl.springs.YOffset.SetGoal(0, true);
-          syl.springs.Glow.SetGoal(0, true);
-          setCachedInline(syl.span, "scale", "");
-          setCachedInline(syl.span, "transform", "");
+          syl.springs.Scale.SetGoal(restScale, true);
+          syl.springs.YOffset.SetGoal(restYOffset, true);
+          syl.springs.Glow.SetGoal(restGlow, true);
+          setCachedInline(syl.span, "scale", `${restScale}`);
+          setCachedInline(syl.span, "transform", restTransform);
           setCachedStyle(syl.span, "--text-shadow-blur-radius", "4px");
           setCachedStyle(syl.span, "--text-shadow-opacity", "0%");
         }
         for (const ltr of syl.letters) {
           setCachedStyle(ltr.span, "--char-progress", "-20%");
           if (ltr.springs) {
-            ltr.springs.Scale.SetGoal(1, true);
-            ltr.springs.YOffset.SetGoal(0, true);
-            ltr.springs.Glow.SetGoal(0, true);
-            setCachedInline(ltr.span, "scale", "");
-            setCachedInline(ltr.span, "transform", "");
+            ltr.springs.Scale.SetGoal(letterRestScale, true);
+            ltr.springs.YOffset.SetGoal(letterRestYOffset, true);
+            ltr.springs.Glow.SetGoal(letterRestGlow, true);
+            setCachedInline(ltr.span, "scale", `${letterRestScale}`);
+            setCachedInline(ltr.span, "transform", letterRestTransform);
             setCachedStyle(ltr.span, "--text-shadow-blur-radius", "4px");
             setCachedStyle(ltr.span, "--text-shadow-opacity", "0%");
           }
@@ -1494,11 +1510,11 @@ export default class LyricsRenderer {
         for (const bgSyl of line.backgroundSyllables) {
           setCachedStyle(bgSyl.span, "--char-progress", "-20%");
           if (bgSyl.springs) {
-            bgSyl.springs.Scale.SetGoal(1, true);
-            bgSyl.springs.YOffset.SetGoal(0, true);
-            bgSyl.springs.Glow.SetGoal(0, true);
-            setCachedInline(bgSyl.span, "scale", "");
-            setCachedInline(bgSyl.span, "transform", "");
+            bgSyl.springs.Scale.SetGoal(restScale, true);
+            bgSyl.springs.YOffset.SetGoal(restYOffset, true);
+            bgSyl.springs.Glow.SetGoal(restGlow, true);
+            setCachedInline(bgSyl.span, "scale", `${restScale}`);
+            setCachedInline(bgSyl.span, "transform", restTransform);
             setCachedStyle(bgSyl.span, "--text-shadow-blur-radius", "4px");
             setCachedStyle(bgSyl.span, "--text-shadow-opacity", "0%");
           }
