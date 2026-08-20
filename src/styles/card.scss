@@ -38,12 +38,38 @@ aside:has(.VL-FluidMeshBg) {
         display: none !important;
     }
 
-    // Subtle glass backing on other NPV sections
+    // Subtle glass backing on other NPV sections (Credits, Queue, etc.)
     .main-nowPlayingView-section:not(#VividLyrics-Card) {
         background-color: var(--background-tinted-base, rgba(18, 18, 18, 0.45)) !important;
         backdrop-filter: blur(8px);
         -webkit-backdrop-filter: blur(8px);
         border-radius: 8px !important;
+        overflow: hidden !important;
+    }
+
+    // Full frosted glass for About the Artist section while preserving artist background image
+    .main-nowPlayingView-section:is(.main-nowPlayingView-aboutArtist, .main-nowPlayingView-aboutArtistV2, [class*="aboutArtist"]) {
+        background-color: var(--background-tinted-base, rgba(18, 18, 18, 0.45)) !important;
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
+        border-radius: 8px !important;
+        overflow: hidden !important;
+
+        > div {
+            background-color: transparent !important;
+        }
+
+        // Clear solid background-color from all child elements except ones with inline background-image
+        div:not([style*="background-image"]) {
+            background-color: transparent !important;
+        }
+
+        // Inset backdrop overlay and text wrappers
+        div[aria-hidden="true"],
+        div::before,
+        div::after {
+            background-color: transparent !important;
+        }
     }
 }
 
