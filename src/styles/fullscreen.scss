@@ -203,15 +203,27 @@
 }
 
 .VL-FS-Stage .VL-FS-Lyrics .Lyrics,
-.VL-FS-Stage .VL-FS-Lyrics.VL-FS-Lyrics-Static {
+.VL-FS-Stage .VL-FS-Lyrics.VL-FS-Lyrics-Static,
+.VL-FS-Stage .VL-FS-Lyrics .VL-Skeleton,
+.VL-FS-Stage .VL-FS-Lyrics .VL-NoLyrics,
+.VL-FS-Stage .VL-FS-Lyrics .VL-StatusText {
     padding-left: calc(var(--vl-player-left) + var(--vl-player-widget-size) + var(--vl-player-gap));
     padding-right: clamp(40px, 8cqw, 168px);
     box-sizing: border-box;
 }
 
-.VL-FS-Stage .VL-FS-Lyrics .VL-Skeleton {
-    padding-left: calc(var(--vl-player-left) + var(--vl-player-widget-size) + var(--vl-player-gap));
-    padding-right: clamp(40px, 8cqw, 168px);
+.VL-FS-Stage .VL-FS-Lyrics .VL-NoLyrics {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    min-height: 200px;
+    font-size: calc(36px * var(--vl-font-size, 1));
+    font-weight: 700;
+    opacity: 0.6;
+    text-align: center;
+    overflow-wrap: break-word;
+    word-break: break-word;
 }
 
 .VL-FS-Stage.vl-player-widget-hidden {
@@ -227,7 +239,9 @@
 
     .VL-FS-Lyrics .Lyrics,
     .VL-FS-Lyrics.VL-FS-Lyrics-Static,
-    .VL-FS-Lyrics .VL-Skeleton {
+    .VL-FS-Lyrics .VL-Skeleton,
+    .VL-FS-Lyrics .VL-NoLyrics,
+    .VL-FS-Lyrics .VL-StatusText {
         padding-right: 48px;
         padding-left: 48px;
     }
@@ -236,7 +250,9 @@
 @container vl-fs-stage (max-width: 760px) {
     .VL-FS-Stage .VL-FS-Lyrics .Lyrics,
     .VL-FS-Stage .VL-FS-Lyrics.VL-FS-Lyrics-Static,
-    .VL-FS-Stage .VL-FS-Lyrics .VL-Skeleton {
+    .VL-FS-Stage .VL-FS-Lyrics .VL-Skeleton,
+    .VL-FS-Stage .VL-FS-Lyrics .VL-NoLyrics,
+    .VL-FS-Stage .VL-FS-Lyrics .VL-StatusText {
         padding-right: 24px;
         padding-left: 24px;
     }

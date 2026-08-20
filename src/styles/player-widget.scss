@@ -33,6 +33,29 @@
     box-shadow:
         0 20px 48px rgb(0 0 0 / 0.3),
         0 3px 12px rgb(0 0 0 / 0.2);
+
+    &::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(
+            to top,
+            rgba(0, 0, 0, 0.62) 0%,
+            rgba(0, 0, 0, 0.3) 30%,
+            rgba(0, 0, 0, 0) 58%
+        );
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 220ms ease;
+        z-index: 1;
+    }
+
+    .VL-PlayerWidget:hover &,
+    .VL-PlayerWidget:focus-within & {
+        &::after {
+            opacity: 1;
+        }
+    }
 }
 
 .VL-PlayerArtwork,
@@ -154,12 +177,16 @@
     place-items: center;
     border: 0;
     border-radius: 50%;
-    background: transparent;
-    color: rgb(255 255 255 / 0.76);
+    background: rgba(0, 0, 0, 0.52);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(255, 255, 255, 0.12);
+    color: rgb(255 255 255 / 0.9);
     cursor: pointer;
     transition:
         color 130ms ease,
         background-color 130ms ease,
+        box-shadow 130ms ease,
         transform 110ms ease;
 
     svg {
@@ -172,7 +199,8 @@
 
     &:hover {
         color: #fff;
-        background: rgb(255 255 255 / 0.12);
+        background: rgba(0, 0, 0, 0.75);
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.28);
     }
 
     &:focus-visible {
@@ -212,9 +240,15 @@
     border-radius: 16px;
     overflow: hidden;
     box-sizing: border-box;
+    background: rgba(0, 0, 0, 0.52);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(255, 255, 255, 0.12);
+    color: rgb(255 255 255 / 0.9);
     transition:
         width 0.25s cubic-bezier(0.4, 0, 0.2, 1),
         background-color 0.2s ease,
+        box-shadow 0.2s ease,
         color 0.2s ease,
         transform 0.15s ease;
 
@@ -247,7 +281,8 @@
     &:focus-visible {
         z-index: 4;
         color: #fff;
-        background: rgb(255 255 255 / 0.14);
+        background: rgba(0, 0, 0, 0.75);
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.28);
 
         .btn-text {
             opacity: 1;
