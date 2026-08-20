@@ -29,6 +29,8 @@ export type Settings = {
   scrollMode: "smooth" | "legacy";
   stripBackgroundBrackets: boolean;
   npvAmbiance: boolean;
+  mainPlayerWidget: boolean;
+  fullscreenPlayerWidget: boolean;
   autoResumeDelay: number;
 };
 
@@ -60,6 +62,8 @@ const defaults: Settings = {
   scrollMode: "smooth",
   stripBackgroundBrackets: false,
   npvAmbiance: true,
+  mainPlayerWidget: false,
+  fullscreenPlayerWidget: true,
   autoResumeDelay: 10,
 };
 

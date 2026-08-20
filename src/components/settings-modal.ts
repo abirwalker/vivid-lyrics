@@ -436,6 +436,16 @@ function buildContent(): HTMLElement {
     ]],
     ["Interface", [
       {
+        label: "Main View Player Widget",
+        desc: "Show artwork and playback controls on the lyrics page",
+        control: makeToggle(s.mainPlayerWidget, (v) => set("mainPlayerWidget", v)),
+      },
+      {
+        label: "Cinema Player Widget",
+        desc: "Show artwork and playback controls in Cinema and Fullscreen",
+        control: makeToggle(s.fullscreenPlayerWidget, (v) => set("fullscreenPlayerWidget", v)),
+      },
+      {
         label: "Hide Spotify Lyrics Button",
         desc: "Hide the native lyrics button in the playbar",
         control: makeToggle(s.hideNativeLyrics, (v) => {

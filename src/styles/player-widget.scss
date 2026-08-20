@@ -337,14 +337,14 @@
 
     .VL-PlayerWidget {
         display: grid;
-        grid-template-columns: 112px minmax(0, 1fr);
+        grid-template-columns: var(--vl-player-compact-size, 112px) minmax(0, 1fr);
         align-items: center;
         gap: 16px;
         text-align: left;
     }
 
     .VL-PlayerArtworkWrap {
-        width: 112px;
+        width: var(--vl-player-compact-size, 112px);
         border-radius: 10px;
     }
 

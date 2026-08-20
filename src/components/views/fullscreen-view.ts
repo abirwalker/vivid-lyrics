@@ -19,7 +19,7 @@ import {
   RomanizeOffIcon,
 } from "../shared/svg-icons";
 import { createFluidMeshBackground } from "../fluid-mesh-bg";
-import { createPlayerWidget } from "../player-widget";
+import { createPlayerWidget, type PlayerWidget } from "../player-widget";
 import "../../styles/fullscreen.scss";
 
 let portal: HTMLDivElement | null = null;
@@ -27,6 +27,9 @@ let content: HTMLDivElement | null = null;
 let controlsContainer: HTMLDivElement | null = null;
 let activeRenderer: LyricsRenderer | null = null;
 let isLoading = false;
+let stage: HTMLDivElement | null = null;
+let playerHost: HTMLDivElement | null = null;
+let playerWidget: PlayerWidget | null = null;
 
 
 function renderLyrics(lyrics: TransformedLyrics | null): void {
@@ -172,6 +175,23 @@ function resetIdleTimer(): void {
   }, 3000);
 }
 
+function updateFullscreenPlayerWidget(): void {
+  if (!stage || !playerHost) return;
+  const enabled = get("fullscreenPlayerWidget");
+  const fontScale = get("fontSize") / 100;
+  stage.style.setProperty("--vl-player-size-adjust", `${(fontScale - 1) * 200}px`);
+  stage.style.setProperty("--vl-player-compact-size", `${112 * fontScale}px`);
+  stage.classList.toggle("vl-player-widget-hidden", !enabled);
+
+  if (enabled && getPageMode() !== "page" && !playerWidget) {
+    playerWidget = createPlayerWidget("fullscreen");
+    playerHost.appendChild(playerWidget.element);
+  } else if ((!enabled || getPageMode() === "page") && playerWidget) {
+    playerWidget.destroy();
+    playerWidget = null;
+  }
+}
+
 function show(): void {
   if (!portal) return;
   portal.style.display = "block";
@@ -180,6 +200,7 @@ function show(): void {
   document.addEventListener("mousemove", resetIdleTimer);
   document.addEventListener("fullscreenchange", onFullscreenChange);
   isLoading = isLyricsLoading();
+  updateFullscreenPlayerWidget();
   updateControls();
   resetIdleTimer();
   renderLyrics(getLyrics());
@@ -198,6 +219,7 @@ function hide(): void {
     idleTimer = null;
   }
   content?.classList.remove("vl-idle");
+  updateFullscreenPlayerWidget();
 
   // Destroy renderer to stop RAF loop and free GPU memory
   if (activeRenderer) {
@@ -255,13 +277,11 @@ export function setupFullscreen(): void {
   const lyricsDiv = document.createElement("div");
   lyricsDiv.className = "VL-FS-Lyrics";
 
-  const stage = document.createElement("div");
+  stage = document.createElement("div");
   stage.className = "VL-FS-Stage";
 
-  const playerHost = document.createElement("div");
+  playerHost = document.createElement("div");
   playerHost.className = "VL-PlayerWidgetHost VL-FS-PlayerHost";
-  const playerWidget = createPlayerWidget("fullscreen");
-  playerHost.appendChild(playerWidget.element);
   playerHost.addEventListener("mouseenter", () => {
     isHoveringControls = true;
     resetIdleTimer();
@@ -308,11 +328,13 @@ export function setupFullscreen(): void {
       key !== "controlsPosition" &&
       key !== "animationStyle" &&
       key !== "romanization" &&
+      key !== "fullscreenPlayerWidget" &&
       key !== "stripBackgroundBrackets"
     ) {
       return;
     }
     updateControls();
+    updateFullscreenPlayerWidget();
     isLoading = isLyricsLoading();
     renderLyrics(getLyrics());
   });

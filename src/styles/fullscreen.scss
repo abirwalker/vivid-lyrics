@@ -26,7 +26,12 @@
 }
 
 .VL-FS-Stage {
-    --vl-player-widget-size: clamp(220px, min(30cqw, 62cqh), 520px);
+    --vl-player-size-adjust: 0px;
+    --vl-player-widget-size: clamp(
+        calc(250px + var(--vl-player-size-adjust)),
+        calc(min(33cqw, 66cqh) + var(--vl-player-size-adjust)),
+        calc(560px + var(--vl-player-size-adjust))
+    );
     --vl-player-left: clamp(28px, 5cqw, 92px);
     --vl-player-gap: clamp(32px, 5cqw, 104px);
     position: relative;
@@ -42,19 +47,6 @@
 
 .VL-FS-PlayerHost {
     opacity: 1;
-    transition:
-        opacity 350ms cubic-bezier(0.4, 0, 0.2, 1),
-        transform 350ms cubic-bezier(0.4, 0, 0.2, 1);
-
-    .VividLyrics-FullscreenContent.vl-idle & {
-        opacity: 0;
-        transform: translateY(calc(-50% + 8px));
-        pointer-events: none;
-
-        .VL-PlayerWidget {
-            pointer-events: none;
-        }
-    }
 }
 
 .VL-FS-Controls {
@@ -220,6 +212,25 @@
 .VL-FS-Stage .VL-FS-Lyrics .VL-Skeleton {
     padding-left: calc(var(--vl-player-left) + var(--vl-player-widget-size) + var(--vl-player-gap));
     padding-right: clamp(40px, 8cqw, 168px);
+}
+
+.VL-FS-Stage.vl-player-widget-hidden {
+    .VL-PlayerWidgetHost {
+        display: none;
+    }
+
+    .VL-FS-Lyrics {
+        max-width: min(92vw, 1200px);
+        margin-right: auto;
+        margin-left: auto;
+    }
+
+    .VL-FS-Lyrics .Lyrics,
+    .VL-FS-Lyrics.VL-FS-Lyrics-Static,
+    .VL-FS-Lyrics .VL-Skeleton {
+        padding-right: 48px;
+        padding-left: 48px;
+    }
 }
 
 @container vl-fs-stage (max-width: 760px) {

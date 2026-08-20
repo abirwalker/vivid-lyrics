@@ -37,6 +37,7 @@ let settingsUnsub: (() => void) | null = null;
 let activeRenderer: LyricsRenderer | null = null;
 let romanizeBtn: HTMLButtonElement | null = null;
 let playerWidget: PlayerWidget | null = null;
+let playerHost: HTMLDivElement | null = null;
 
 const PAGE_ROOT_SELECTORS = [
   ".Root__main-view .main-view-container div[data-overlayscrollbars-viewport]",
@@ -138,6 +139,23 @@ function updateMainRomanizeBtn(): void {
   romanizeBtn.style.display = hasRomanizeCapability() && get("romanization") ? "" : "none";
 }
 
+function updateMainPlayerWidget(): void {
+  if (!pageContainer || !playerHost) return;
+  const enabled = get("mainPlayerWidget");
+  const fontScale = get("fontSize") / 100;
+  pageContainer.style.setProperty("--vl-player-size-adjust", `${(fontScale - 1) * 200}px`);
+  pageContainer.style.setProperty("--vl-player-compact-size", `${112 * fontScale}px`);
+  pageContainer.classList.toggle("vl-player-widget-hidden", !enabled);
+
+  if (enabled && !playerWidget) {
+    playerWidget = createPlayerWidget("main");
+    playerHost.appendChild(playerWidget.element);
+  } else if (!enabled && playerWidget) {
+    playerWidget.destroy();
+    playerWidget = null;
+  }
+}
+
 function open(): void {
   if (isOpen) return;
   isOpen = true;
@@ -154,13 +172,12 @@ function open(): void {
   const stage = document.createElement("div");
   stage.className = "VL-MainStage";
 
-  const playerHost = document.createElement("div");
+  playerHost = document.createElement("div");
   playerHost.className = "VL-PlayerWidgetHost VL-MainPlayerHost";
-  playerWidget = createPlayerWidget("main");
-  playerHost.appendChild(playerWidget.element);
 
   stage.appendChild(playerHost);
   stage.appendChild(content);
+  updateMainPlayerWidget();
 
   const controls = document.createElement("div");
   controls.className = "VL-MainControls";
@@ -252,12 +269,14 @@ function open(): void {
       key !== "scrollMode" &&
       key !== "animationStyle" &&
       key !== "romanization" &&
+      key !== "mainPlayerWidget" &&
       key !== "stripBackgroundBrackets"
     ) {
       return;
     }
     updateMainControlsPosition();
     updateMainRomanizeBtn();
+    updateMainPlayerWidget();
     isLoading = isLyricsLoading();
     renderPage(getLyrics());
   });
@@ -278,6 +297,7 @@ function closePage(): void {
   activeRenderer = null;
   playerWidget?.destroy();
   playerWidget = null;
+  playerHost = null;
 
   pageContainer?.remove();
   pageContainer = null;
