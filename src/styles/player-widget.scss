@@ -1,0 +1,382 @@
+.VL-PlayerWidgetHost {
+    position: absolute;
+    z-index: 3;
+    top: 50%;
+    left: var(--vl-player-left);
+    width: var(--vl-player-widget-size);
+    min-width: 0;
+    transform: translateY(-50%);
+}
+
+.VL-PlayerWidget {
+    position: relative;
+    width: 100%;
+    min-width: 0;
+    color: var(--text-base, #fff);
+    text-align: center;
+    opacity: 0.94;
+    transition: opacity 180ms ease;
+
+    &:hover,
+    &:focus-within {
+        opacity: 1;
+    }
+}
+
+.VL-PlayerArtworkWrap {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 1;
+    overflow: hidden;
+    border-radius: clamp(8px, 1cqw, 16px);
+    background: rgb(24 24 24 / 0.68);
+    box-shadow:
+        0 20px 48px rgb(0 0 0 / 0.3),
+        0 3px 12px rgb(0 0 0 / 0.2);
+}
+
+.VL-PlayerArtwork,
+.VL-PlayerArtworkFallback {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+}
+
+.VL-PlayerArtworkFallback {
+    display: grid;
+    place-items: center;
+    background:
+        radial-gradient(circle at 30% 24%, rgb(var(--vl-accent-color-rgb, 120 120 120) / 0.5), transparent 58%),
+        rgb(30 30 30 / 0.92);
+    color: rgb(255 255 255 / 0.42);
+    font-size: calc(var(--vl-player-widget-size) * 0.25);
+}
+
+.VL-PlayerArtwork {
+    display: block;
+    object-fit: cover;
+    opacity: 0;
+    pointer-events: none;
+    user-select: none;
+    transition: opacity 340ms cubic-bezier(0.4, 0, 0.2, 1);
+
+    &.is-visible {
+        opacity: 1;
+    }
+}
+
+.VL-PlayerMetadata {
+    min-width: 0;
+    padding: 14px 8px 0;
+}
+
+.VL-PlayerTitle,
+.VL-PlayerArtists {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.VL-PlayerTitle {
+    color: rgb(255 255 255 / 0.94);
+    font-size: clamp(16px, 1.35cqw, 23px);
+    font-weight: 750;
+    line-height: 1.25;
+}
+
+.VL-PlayerArtists {
+    margin-top: 3px;
+    color: rgb(255 255 255 / 0.58);
+    font-size: clamp(12px, 0.95cqw, 16px);
+    font-weight: 500;
+    line-height: 1.3;
+}
+
+.VL-PlayerControls {
+    position: absolute;
+    z-index: 2;
+    left: 50%;
+    top: calc(var(--vl-player-widget-size) - 62px);
+    display: grid;
+    grid-template-columns: 68px 44px 68px;
+    align-items: center;
+    gap: 5px;
+    padding: 0;
+    opacity: 0;
+    pointer-events: none;
+    transform: translate(-50%, 7px);
+    transition:
+        opacity 180ms ease,
+        transform 220ms cubic-bezier(0.2, 0, 0, 1);
+
+    .VL-PlayerWidget:hover &,
+    .VL-PlayerWidget:focus-within & {
+        opacity: 1;
+        pointer-events: auto;
+        transform: translate(-50%, 0);
+    }
+}
+
+.VL-PlayerControlsSide {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+
+    &-left {
+        justify-content: flex-end;
+
+        .VL-PlayerAction {
+            flex-direction: row-reverse;
+
+            .btn-text {
+                margin-right: 8px;
+            }
+        }
+    }
+
+    &-right {
+        justify-content: flex-start;
+
+        .VL-PlayerAction .btn-text {
+            margin-left: 8px;
+        }
+    }
+}
+
+.VL-PlayerButton {
+    position: relative;
+    width: 32px;
+    height: 32px;
+    padding: 8px;
+    display: grid;
+    place-items: center;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: rgb(255 255 255 / 0.76);
+    cursor: pointer;
+    transition:
+        color 130ms ease,
+        background-color 130ms ease,
+        transform 110ms ease;
+
+    svg {
+        position: relative;
+        z-index: 1;
+        width: 16px;
+        height: 16px;
+        display: block;
+    }
+
+    &:hover {
+        color: #fff;
+        background: rgb(255 255 255 / 0.12);
+    }
+
+    &:focus-visible {
+        outline: 2px solid #fff;
+        outline-offset: 2px;
+    }
+
+    &:active {
+        transform: scale(0.9);
+    }
+
+    &.is-active {
+        color: var(--spice-button-active, #1ed760);
+
+        &::after {
+            content: "";
+            position: absolute;
+            bottom: 1px;
+            left: 50%;
+            width: 3px;
+            height: 3px;
+            border-radius: 50%;
+            background: currentColor;
+            transform: translateX(-50%);
+        }
+    }
+}
+
+.VL-PlayerAction {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-start;
+    flex: 0 0 auto;
+    width: 32px;
+    min-width: 32px;
+    padding: 0 7px;
+    border-radius: 16px;
+    overflow: hidden;
+    box-sizing: border-box;
+    transition:
+        width 0.25s cubic-bezier(0.4, 0, 0.2, 1),
+        background-color 0.2s ease,
+        color 0.2s ease,
+        transform 0.15s ease;
+
+    .icon {
+        position: relative;
+        z-index: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex: 0 0 18px;
+        width: 18px;
+        height: 18px;
+
+        svg {
+            width: 18px;
+            height: 18px;
+        }
+    }
+
+    .btn-text {
+        flex-shrink: 0;
+        font-size: 12px;
+        font-weight: 600;
+        white-space: nowrap;
+        opacity: 0;
+        transition: opacity 0.15s ease;
+    }
+
+    &:hover,
+    &:focus-visible {
+        z-index: 4;
+        color: #fff;
+        background: rgb(255 255 255 / 0.14);
+
+        .btn-text {
+            opacity: 1;
+            transition-delay: 0.08s;
+        }
+    }
+}
+
+.VL-PlayerShuffle:hover,
+.VL-PlayerShuffle:focus-visible {
+    width: 92px;
+}
+
+.VL-PlayerPrevious:hover,
+.VL-PlayerPrevious:focus-visible {
+    width: 98px;
+}
+
+.VL-PlayerNext:hover,
+.VL-PlayerNext:focus-visible {
+    width: 74px;
+}
+
+.VL-PlayerRepeat:hover,
+.VL-PlayerRepeat:focus-visible {
+    width: 86px;
+}
+
+.VL-PlayerToggle {
+    width: 44px;
+    height: 44px;
+    padding: 11px;
+    color: #000;
+    background: #fff;
+
+    svg {
+        width: 100%;
+        height: 100%;
+    }
+
+    &:hover {
+        color: #000;
+        background: rgb(255 255 255 / 0.88);
+        transform: scale(1.04);
+    }
+
+    &:active {
+        transform: scale(0.94);
+    }
+}
+
+.VL-RepeatOne {
+    display: none;
+    position: absolute;
+    top: 50%;
+    left: 8px;
+    width: 16px;
+    height: 16px;
+    place-items: center;
+    padding-top: 1px;
+    font-size: 8px;
+    font-weight: 900;
+    transform: translateY(-50%);
+}
+
+.VL-PlayerRepeat.is-repeat-one {
+    svg {
+        opacity: 0.72;
+    }
+
+    .VL-RepeatOne {
+        display: grid;
+    }
+
+    &::after {
+        display: none;
+    }
+}
+
+@container (max-width: 760px) {
+    .VL-PlayerWidgetHost {
+        top: 16px;
+        left: 50%;
+        width: min(520px, calc(100cqw - 32px));
+        transform: translateX(-50%);
+    }
+
+    .VL-PlayerWidget {
+        display: grid;
+        grid-template-columns: 112px minmax(0, 1fr);
+        align-items: center;
+        gap: 16px;
+        text-align: left;
+    }
+
+    .VL-PlayerArtworkWrap {
+        width: 112px;
+        border-radius: 10px;
+    }
+
+    .VL-PlayerArtworkFallback {
+        font-size: 32px;
+    }
+
+    .VL-PlayerMetadata {
+        padding: 0 8px 0 0;
+    }
+
+    .VL-PlayerControls {
+        left: calc(100% + 16px);
+        top: auto;
+        bottom: 7px;
+        padding: 0;
+        grid-template-columns: 60px 36px 60px;
+        gap: 3px;
+        opacity: 1;
+        pointer-events: auto;
+        transform: none;
+    }
+
+    .VL-PlayerButton {
+        width: 28px;
+        height: 28px;
+        padding: 7px;
+    }
+
+    .VL-PlayerToggle {
+        width: 36px;
+        height: 36px;
+        padding: 9px;
+    }
+}

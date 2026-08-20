@@ -22,6 +22,7 @@ import {
   RomanizeOffIcon,
 } from "../shared/svg-icons";
 import { createFluidMeshBackground } from "../fluid-mesh-bg";
+import { createPlayerWidget, type PlayerWidget } from "../player-widget";
 
 const BASE_ROUTE = "/vivid-lyrics";
 
@@ -35,6 +36,7 @@ let romanizeUnsub: (() => void) | null = null;
 let settingsUnsub: (() => void) | null = null;
 let activeRenderer: LyricsRenderer | null = null;
 let romanizeBtn: HTMLButtonElement | null = null;
+let playerWidget: PlayerWidget | null = null;
 
 const PAGE_ROOT_SELECTORS = [
   ".Root__main-view .main-view-container div[data-overlayscrollbars-viewport]",
@@ -149,6 +151,17 @@ function open(): void {
   const content = document.createElement("div");
   content.className = "VividLyrics-PageContent";
 
+  const stage = document.createElement("div");
+  stage.className = "VL-MainStage";
+
+  const playerHost = document.createElement("div");
+  playerHost.className = "VL-PlayerWidgetHost VL-MainPlayerHost";
+  playerWidget = createPlayerWidget("main");
+  playerHost.appendChild(playerWidget.element);
+
+  stage.appendChild(playerHost);
+  stage.appendChild(content);
+
   const controls = document.createElement("div");
   controls.className = "VL-MainControls";
   mainControls = controls;
@@ -177,7 +190,7 @@ function open(): void {
   controls.appendChild(shrinkBtn);
 
   pageContainer.appendChild(createFluidMeshBackground());
-  pageContainer.appendChild(content);
+  pageContainer.appendChild(stage);
   pageContainer.appendChild(controls);
 
   hiddenSiblings = Array.from(pageRoot.children).filter(
@@ -263,6 +276,8 @@ function closePage(): void {
 
   activeRenderer?.destroy();
   activeRenderer = null;
+  playerWidget?.destroy();
+  playerWidget = null;
 
   pageContainer?.remove();
   pageContainer = null;

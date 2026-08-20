@@ -7,6 +7,13 @@ declare namespace Spicetify {
     getProgress(): number;
     getDuration?(): number;
     isPlaying(): boolean;
+    back?(): void;
+    togglePlay?(): void;
+    next?(): void;
+    getRepeat?(): number;
+    setRepeat?(mode: number): void;
+    setShuffle?(enabled: boolean): void;
+    origin?: { _state?: { shuffle?: boolean; smartShuffle?: boolean; repeat?: number }; _events?: { addListener?(event: string, cb: (e: any) => void): void } };
   };
   const Platform: {
     Session?: { accessToken?: string };

@@ -19,6 +19,7 @@ import {
   RomanizeOffIcon,
 } from "../shared/svg-icons";
 import { createFluidMeshBackground } from "../fluid-mesh-bg";
+import { createPlayerWidget } from "../player-widget";
 import "../../styles/fullscreen.scss";
 
 let portal: HTMLDivElement | null = null;
@@ -33,6 +34,7 @@ function renderLyrics(lyrics: TransformedLyrics | null): void {
 
   const lyricsEl = content.querySelector<HTMLElement>(".VL-FS-Lyrics");
   if (!lyricsEl) return;
+  lyricsEl.classList.toggle("VL-FS-Lyrics-Static", lyrics?.type === "Static");
 
   if (activeRenderer) {
     activeRenderer.destroy();
@@ -253,9 +255,28 @@ export function setupFullscreen(): void {
   const lyricsDiv = document.createElement("div");
   lyricsDiv.className = "VL-FS-Lyrics";
 
+  const stage = document.createElement("div");
+  stage.className = "VL-FS-Stage";
+
+  const playerHost = document.createElement("div");
+  playerHost.className = "VL-PlayerWidgetHost VL-FS-PlayerHost";
+  const playerWidget = createPlayerWidget("fullscreen");
+  playerHost.appendChild(playerWidget.element);
+  playerHost.addEventListener("mouseenter", () => {
+    isHoveringControls = true;
+    resetIdleTimer();
+  });
+  playerHost.addEventListener("mouseleave", () => {
+    isHoveringControls = false;
+    resetIdleTimer();
+  });
+
+  stage.appendChild(playerHost);
+  stage.appendChild(lyricsDiv);
+
   content.appendChild(createFluidMeshBackground());
   content.appendChild(controlsContainer);
-  content.appendChild(lyricsDiv);
+  content.appendChild(stage);
   portal.appendChild(content);
   document.body.appendChild(portal);
 
