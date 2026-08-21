@@ -9,11 +9,10 @@
 }
 
 .VL-MainStage {
-    --vl-player-size-adjust: 0px;
     --vl-player-widget-size: clamp(
-        calc(240px + var(--vl-player-size-adjust)),
-        calc(min(29cqw, 62cqh) + var(--vl-player-size-adjust)),
-        calc(480px + var(--vl-player-size-adjust))
+        calc(240px + var(--vl-player-size-adjust, 0px)),
+        calc(min(29cqw, 62cqh) + var(--vl-player-size-adjust, 0px)),
+        calc(480px + var(--vl-player-size-adjust, 0px))
     );
     --vl-player-left: clamp(24px, 4cqw, 72px);
     --vl-player-gap: clamp(28px, 5cqw, 96px);

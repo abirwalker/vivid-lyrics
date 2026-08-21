@@ -14,7 +14,8 @@ export type Settings = {
   romanization: boolean;
   romanizationPosition: "top" | "bottom" | "replace";
   fontSize: number;
-  fontFamily: "default" | "spicy";
+  fontFamily: "default" | "spicy" | "outfit" | "crimson-pro" | "jetbrains-mono" | "patrick-hand" | "custom";
+  customFontName: string;
   hideNativeLyrics: boolean;
   controlsPosition: "top" | "bottom";
   centeredText: boolean;
@@ -48,6 +49,7 @@ const defaults: Settings = {
   romanizationPosition: "replace",
   fontSize: 100,
   fontFamily: "default",
+  customFontName: "",
   hideNativeLyrics: true,
   controlsPosition: "top",
   centeredText: false,

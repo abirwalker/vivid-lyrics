@@ -5,60 +5,13 @@ import {
   resetSettings,
   type Settings,
 } from "../stores/settings";
-import storage from "../utils/storage";
+import {
+  applyFont,
+  loadCustomFont,
+  CUSTOM_FONT_FAMILY,
+} from "../utils/font-manager";
 import { CloseIcon } from "./shared/svg-icons";
 import "../styles/settings.scss";
-
-const FONT_CSS_URL = "https://fonts.spikerko.org/spicy-lyrics/source.css";
-const CACHE_KEY = "spicy-font-css";
-let injected = false;
-
-async function ensureSpicyFont(): Promise<void> {
-  if (injected) return;
-
-  const cached = storage.get(CACHE_KEY);
-  if (cached) {
-    injectFontCSS(cached);
-    injected = true;
-    return;
-  }
-
-  const cssRes = await fetch(FONT_CSS_URL);
-  const rawCSS = await cssRes.text();
-
-  const fontMatches = [...rawCSS.matchAll(/url\(([^)]+)\)/g)];
-  let resolved = rawCSS;
-
-  for (const match of fontMatches) {
-    const relativePath = match[1];
-    const absoluteURL = new URL(relativePath, FONT_CSS_URL).href;
-    const fontRes = await fetch(absoluteURL);
-    const buffer = await fontRes.arrayBuffer();
-    const base64 = btoa(
-      new Uint8Array(buffer).reduce((s, b) => s + String.fromCharCode(b), ""),
-    );
-    const dataURL = `data:font/woff2;base64,${base64}`;
-    resolved = resolved.replace(match[0], `url(${dataURL})`);
-  }
-
-  storage.set(CACHE_KEY, resolved);
-  injectFontCSS(resolved);
-  injected = true;
-}
-
-function injectFontCSS(css: string): void {
-  const style = document.createElement("style");
-  style.textContent = css;
-  document.head.appendChild(style);
-}
-
-function applyFont(font: Settings["fontFamily"]): void {
-  document.documentElement.classList.remove("vl-font-default", "vl-font-spicy");
-  document.documentElement.classList.add(`vl-font-${font}`);
-  if (font === "spicy") {
-    ensureSpicyFont();
-  }
-}
 
 function applyCenteredText(centered: boolean): void {
   document.documentElement.classList.toggle("vl-centered-text", centered);
@@ -139,6 +92,71 @@ function makeSlider(
   input.value = String(value);
   input.addEventListener("input", () => onChange(parseFloat(input.value)));
   return input;
+}
+
+function makeCustomFontControl(value: string): HTMLElement {
+  const container = document.createElement("div");
+  container.className = "VL-CustomFontControl";
+
+  const inputRow = document.createElement("div");
+  inputRow.className = "VL-CustomFontInputRow";
+
+  const input = document.createElement("input");
+  input.type = "text";
+  input.className = "VL-TextInput";
+  input.placeholder = "Font name or HTTPS URL";
+  input.value = value;
+
+  const applyButton = document.createElement("button");
+  applyButton.type = "button";
+  applyButton.className = "VL-CustomFontApply";
+  applyButton.textContent = "Apply";
+
+  const status = document.createElement("span");
+  status.className = "VL-CustomFontStatus";
+  status.setAttribute("role", "status");
+  status.setAttribute("aria-live", "polite");
+  if (value) {
+    status.textContent = "Press Enter or Apply to reload";
+  }
+
+  const apply = async (): Promise<void> => {
+    if (applyButton.disabled) return;
+    applyButton.disabled = true;
+    input.disabled = true;
+    status.className = "VL-CustomFontStatus is-loading";
+    status.textContent = "Loading…";
+
+    try {
+      const family = await loadCustomFont(input.value);
+      const savedValue = input.value.trim();
+      set("customFontName", savedValue);
+      status.className = "VL-CustomFontStatus is-success";
+      status.textContent = `Loaded ${family === CUSTOM_FONT_FAMILY ? "custom font" : family}`;
+    } catch (error) {
+      status.className = "VL-CustomFontStatus is-error";
+      status.textContent = error instanceof Error ? error.message : "Unable to load this font";
+    } finally {
+      applyButton.disabled = false;
+      input.disabled = false;
+      input.focus();
+    }
+  };
+
+  input.addEventListener("input", () => {
+    status.className = "VL-CustomFontStatus";
+    status.textContent = "Press Enter or Apply";
+  });
+  input.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    void apply();
+  });
+  applyButton.addEventListener("click", () => void apply());
+
+  inputRow.append(input, applyButton);
+  container.append(inputRow, status);
+  return container;
 }
 
 function makeToggle(
@@ -250,6 +268,13 @@ function buildContent(): HTMLElement {
   );
   romanPositionRow.style.display = s.romanization ? "" : "none";
 
+  const customFontRow = makeRow(
+    "Custom Font",
+    "System/Google name, Google Fonts link, or direct HTTPS font file",
+    makeCustomFontControl(s.customFontName || ""),
+  );
+  customFontRow.style.display = s.fontFamily === "custom" ? "" : "none";
+
   const sections: [string, { label: string; desc: string; control: HTMLElement; after?: HTMLElement; after2?: HTMLElement }[]][] = [
     ["Appearance", [
       {
@@ -295,13 +320,20 @@ function buildContent(): HTMLElement {
           [
             { label: "Default", value: "default" },
             { label: "Spicy", value: "spicy" },
+            { label: "Outfit", value: "outfit" },
+            { label: "Crimson Pro", value: "crimson-pro" },
+            { label: "JetBrains Mono", value: "jetbrains-mono" },
+            { label: "Patrick Hand", value: "patrick-hand" },
+            { label: "Custom (Google / System)", value: "custom" },
           ],
           s.fontFamily,
           (v) => {
             set("fontFamily", v as Settings["fontFamily"]);
             applyFont(v as Settings["fontFamily"]);
+            customFontRow.style.display = v === "custom" ? "" : "none";
           },
         ),
+        after: customFontRow,
       },
       {
         label: "Centered Text",

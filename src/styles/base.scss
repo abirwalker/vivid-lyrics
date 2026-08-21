@@ -6,6 +6,21 @@
 .vl-font-spicy {
     --vl-font-stack: SpicyLyrics, var(--fallback-fonts, sans-serif);
 }
+.vl-font-outfit {
+    --vl-font-stack: "Outfit", var(--fallback-fonts, sans-serif);
+}
+.vl-font-crimson-pro {
+    --vl-font-stack: "Crimson Pro", var(--fallback-fonts, serif);
+}
+.vl-font-jetbrains-mono {
+    --vl-font-stack: "JetBrains Mono", var(--fallback-fonts, monospace);
+}
+.vl-font-patrick-hand {
+    --vl-font-stack: "Patrick Hand", var(--fallback-fonts, cursive);
+}
+.vl-font-custom {
+    --vl-font-stack: var(--vl-custom-font, var(--encore-body-font-stack, v.$font));
+}
 /* Nuke the empty ad placeholder container */
 .ScclvBC0NsMgQLQC,
 div[data-testid="test-ref-div"] {
