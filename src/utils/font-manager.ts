@@ -86,7 +86,7 @@ function timeoutAfter(ms: number): Promise<never> {
 }
 
 function normalizeFontName(value: string): string {
-  return value.trim().replace(/[_-]+/g, " ").replace(/\s+/g, " ");
+  return value.trim().replace(/[+_-]+/g, " ").replace(/\s+/g, " ");
 }
 
 function setCustomFontFamily(family: string): void {
