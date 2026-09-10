@@ -1,3 +1,9 @@
+import {
+  incrementPerformanceCounter,
+  markPerformanceEvent,
+  recordPerformanceDuration,
+} from "../tools/performance-logger";
+
 let syncedPosition = 0; // seconds
 let syncedAt = 0; // performance.now() ms
 let predictedPosition = 0; // seconds
@@ -45,6 +51,7 @@ function seedFromPlayer(): void {
 
 /** Sample Spotify's position, compensating approximately for request latency. */
 export async function syncPlaybackPosition(): Promise<void> {
+  markPerformanceEvent("playbackClock.sync.start");
   const player = Spicetify.Player;
   const platform = Spicetify.Platform;
   if (!player || !platform) return;
@@ -77,6 +84,8 @@ export async function syncPlaybackPosition(): Promise<void> {
     sampledAt = performance.now();
     sampledPosition = (player.getProgress?.() ?? 0) / 1000;
   }
+  markPerformanceEvent("playbackClock.sync.complete");
+  recordPerformanceDuration("playbackClock.sync", performance.now() - requestStartedAt);
 
   // A seek, pause/resume, or song change may have happened while the IPC
   // request was in flight. Never let that stale response rewind the clock.
@@ -104,6 +113,7 @@ function scheduleNextSync(): void {
 
 /** Reset immediately after playback discontinuities. */
 export function resetPlaybackClock(): void {
+  incrementPerformanceCounter("playbackClock.resets");
   syncRevision++;
   seedFromPlayer();
   void syncPlaybackPosition();
@@ -129,6 +139,7 @@ export function initPlaybackClock(): void {
 
     if (Math.abs(rawPosition - extrapolatedPosition) <= SEEK_SNAP_THRESHOLD_S) return;
 
+    incrementPerformanceCounter("playbackClock.seekSnaps");
     syncRevision++;
     durationSeconds = readDuration();
     syncedPosition = clampToTrack(rawPosition);

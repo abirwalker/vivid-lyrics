@@ -1,5 +1,5 @@
 const API_HOST = "https://api.spicylyrics.org";
-const VERSION = "5.22.3";
+const VERSION = "6.3.12";
 
 export type QueryInput = {
   operation: string;

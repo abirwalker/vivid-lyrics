@@ -18,6 +18,7 @@ import {
   RomanizeOffIcon,
 } from "../shared/svg-icons";
 import { createFluidMeshBackground } from "../fluid-mesh-bg";
+import { markPerformanceEvent } from "../../tools/performance-logger";
 import "../../styles/lyrics.scss";
 
 const ANCHOR = ".main-nowPlayingView-nowPlayingWidget";
@@ -425,6 +426,7 @@ function observeNPV() {
   };
 
   const runCheck = () => {
+    markPerformanceEvent("npv.anchorCheck");
     const el = document.querySelector(`${ANCHOR}, ${ANCHOR_FALLBACK}`);
     if (el && el !== current) {
       const firstMount = current === null;

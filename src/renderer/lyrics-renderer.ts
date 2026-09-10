@@ -13,6 +13,11 @@ import { SyncIcon } from "../components/shared/svg-icons";
 import { SmoothLyricsScroller } from "./smooth-scroller";
 import { renderLoop, type SharedFrame } from "./render-loop";
 import {
+  incrementPerformanceCounter,
+  isPerformanceLoggingEnabled,
+  recordPerformanceDuration,
+} from "../tools/performance-logger";
+import {
   createSpringSet,
   createLetterSpringSet,
   setSpringGoals,
@@ -52,6 +57,13 @@ const INTERLUDE_EARLIER_BY = 0;
  * cheap placeholder — mirrors spicy-lyrics' virtualizer, just scoped to the
  * expensive inner content instead of the whole line. */
 const VIRTUALIZATION_WINDOW = 7;
+/** Temporary A/B switch. Set false to restore the previous inner-detail
+ * placeholder virtualizer without removing the prototype. */
+const ENABLE_FULL_LINE_VIRTUALIZATION = true;
+/** Extra visible-area slack retained above and below the viewport by the
+ * full-line virtualizer. The playback window remains mounted independently, so
+ * normal auto-scroll does not insert rows while the spring is moving. */
+const FULL_LINE_VIEWPORT_OVERSCAN = 1;
 
 type LyricState = "Idle" | "Active" | "Sung";
 
@@ -110,6 +122,17 @@ type LineInfo = {
   cachedOffsetTop: number;
   cachedHeight: number;
   cachedVocalsHeight: number;
+  cachedBaseOffsetTop: number;
+  cachedBaseHeight: number;
+  cachedBaseVocalsHeight: number;
+  /** Border-box position relative to the Lyrics content box, captured before
+   * complete rows are moved into fixed-height virtualization shells. */
+  cachedVirtualTop: number;
+  cachedMarginTop: number;
+  cachedVirtualSlotHeight: number;
+  virtualExpandedHeight: number;
+  virtualExpandedMarginTop: number;
+  virtualExpandedMarginBottom: number;
   /** Cached reference to the ".Lyric.Synced" span for line-synced lines — resolved once at build time, never queried per frame */
   lyricSpanCache: HTMLElement | null;
   /** Virtualization state for syllable-type lines only (word/syllable/letter trees are
@@ -120,6 +143,10 @@ type LineInfo = {
   mounted: boolean;
   detailedFragment: DocumentFragment | null;
   placeholder: HTMLElement | null;
+  /** Permanent lightweight shell used by full-line virtualization. The complete
+   * row can detach while this element reserves its exact flow geometry. */
+  positioner: HTMLDivElement | null;
+  attached: boolean;
   /** Wobble-mode state: smooth position tracker + precomputed line data */
   wobbleState: WobbleLineState | null;
   /** Wobble-mode: ordered list of character spans with their line-text index */
@@ -251,6 +278,14 @@ export default class LyricsRenderer {
   private frameScrollTop = 0;
   /** Index of the line the virtualization window is currently centered on. */
   private referenceLineIndex = -1;
+  private virtualSurface: HTMLDivElement | null = null;
+  private virtualSurfaceBaseHeight = 0;
+  private measuredFlowBaseHeight = 0;
+  private fullLineVirtualization = false;
+  private virtualMountSignature = "";
+  private virtualInterludeSignature = "";
+  private measuredVirtualWidth = 0;
+  private virtualRemeasureRaf = 0;
 
 	private autoScrollBlocked = false;
 	private programmaticScroll = false;
@@ -264,6 +299,8 @@ export default class LyricsRenderer {
   private viewMode: "main" | "card";
   private cardScrollMode: "static" | "gentle" | "active";
   private resizeObserver: ResizeObserver | null = null;
+  private diagnosticLabel: "main" | "fullscreen" | "npv";
+  private diagnosticMetricPrefix: string;
   constructor(
     parentContainer: HTMLElement,
     private lyrics: TransformedLyrics,
@@ -272,6 +309,13 @@ export default class LyricsRenderer {
     cardScrollMode: "static" | "gentle" | "active" = "static",
   ) {
     this.viewMode = viewMode;
+    this.diagnosticLabel = viewMode === "card"
+      ? "npv"
+      : parentContainer.closest(".VividLyrics-FullscreenContent")
+        ? "fullscreen"
+        : "main";
+    this.diagnosticMetricPrefix = `renderer.${this.diagnosticLabel}`;
+    incrementPerformanceCounter(`renderer.mounts.${this.diagnosticLabel}`);
     this.cardScrollMode = cardScrollMode;
     this.blurMap = blurMap ?? [0, 0, 0.5, 1, 1.5, 2];
     this.scrollContainer = document.createElement("div");
@@ -296,6 +340,19 @@ export default class LyricsRenderer {
     parentContainer.appendChild(this.scrollContainer);
 
     this.simpleBar = new SimpleBar(this.scrollContainer, { autoHide: false });
+    const simpleBar = this.simpleBar;
+    const recalculate = simpleBar.recalculate;
+    const recalculateMetric = `${this.diagnosticMetricPrefix}.simplebar.recalculate`;
+    // SimpleBar schedules this outside the measured shared lyric render loop.
+    simpleBar.recalculate = function measuredRecalculate() {
+      if (!isPerformanceLoggingEnabled()) return recalculate.call(simpleBar);
+      const startedAt = performance.now();
+      try {
+        return recalculate.call(simpleBar);
+      } finally {
+        recordPerformanceDuration(recalculateMetric, performance.now() - startedAt);
+      }
+    };
     this.frameScrollTop = this.simpleBar.getScrollElement().scrollTop;
     this.lyricsContainer.style.paddingBottom =
       viewMode === "card" ? "1em" : "3em";
@@ -314,6 +371,9 @@ export default class LyricsRenderer {
     this.cacheLayoutPositions();
 
     if (lyrics.type !== "Static") {
+      if (ENABLE_FULL_LINE_VIRTUALIZATION) {
+        this.enableFullLineVirtualization();
+      }
       const initialTimestamp = (Spicetify.Player.getProgress?.() ?? 0) / 1000;
       this.applyVirtualizationWindow(
         this.computeReferenceIndex(initialTimestamp),
@@ -334,6 +394,7 @@ export default class LyricsRenderer {
         damping: 20,
         onScrollApplied: (scrollTop) => {
           this.frameScrollTop = scrollTop;
+          this.refreshFullLineVirtualization();
         },
       });
     }
@@ -351,15 +412,26 @@ export default class LyricsRenderer {
     if (typeof ResizeObserver !== "undefined") {
       this.resizeObserver = new ResizeObserver(() => {
         this.invalidateAllWobbleRowCaches();
+        if (this.simpleBar) {
+          const scrollEl = this.simpleBar.getScrollElement();
+          this.cachedContainerHeight = scrollEl.clientHeight;
+          this.cachedMaxScroll = Math.max(
+            0,
+            scrollEl.scrollHeight - scrollEl.clientHeight,
+          );
+          this.refreshFullLineVirtualization(true);
+        }
+        this.scheduleVirtualLayoutRemeasure();
       });
       this.resizeObserver.observe(this.scrollContainer);
+      this.resizeObserver.observe(this.lyricsContainer);
     }
 
     if (lyrics.type !== "Static") {
       this.unregisterFrame = renderLoop.register((frame) => {
         this.onFrame(frame);
         return this.isActive();
-      });
+      }, this.diagnosticLabel);
     }
   }
 
@@ -582,10 +654,21 @@ export default class LyricsRenderer {
           cachedOffsetTop: 0,
           cachedHeight: 0,
           cachedVocalsHeight: 0,
+          cachedBaseOffsetTop: 0,
+          cachedBaseHeight: 0,
+          cachedBaseVocalsHeight: 0,
+          cachedVirtualTop: 0,
+          cachedMarginTop: 0,
+          cachedVirtualSlotHeight: 0,
+          virtualExpandedHeight: 0,
+          virtualExpandedMarginTop: 0,
+          virtualExpandedMarginBottom: 0,
           lyricSpanCache: null,
           mounted: true,
           detailedFragment: null,
           placeholder: null,
+          positioner: null,
+          attached: true,
           wobbleState: null,
           wobbleChars: null,
           wobbleWords: null,
@@ -1064,10 +1147,21 @@ export default class LyricsRenderer {
         cachedOffsetTop: 0,
         cachedHeight: 0,
         cachedVocalsHeight: 0,
+        cachedBaseOffsetTop: 0,
+        cachedBaseHeight: 0,
+        cachedBaseVocalsHeight: 0,
+        cachedVirtualTop: 0,
+        cachedMarginTop: 0,
+        cachedVirtualSlotHeight: 0,
+        virtualExpandedHeight: 0,
+        virtualExpandedMarginTop: 0,
+        virtualExpandedMarginBottom: 0,
         lyricSpanCache,
         mounted: true,
         detailedFragment: null,
         placeholder,
+        positioner: null,
+        attached: true,
         wobbleState,
         wobbleChars,
         wobbleWords,
@@ -1079,14 +1173,285 @@ export default class LyricsRenderer {
   private cacheLayoutPositions(): void {
     const scrollEl = this.simpleBar!.getScrollElement();
     this.cachedContainerHeight = scrollEl.clientHeight;
+
+    // Interlude rows collapse to zero while inactive and expand when their dots
+    // become Active. Measure the base list with every interlude collapsed, then
+    // separately probe its expanded size so the virtual shells can reproduce
+    // that occasional flow change without putting every row back into flow.
+    for (const line of this.lines) {
+      if (line.dots) line.container.classList.remove("Active", "Sung");
+    }
+
+    const lyricsRect = this.lyricsContainer.getBoundingClientRect();
+    const lyricsStyle = getComputedStyle(this.lyricsContainer);
+    const verticalChrome =
+      (parseFloat(lyricsStyle.borderTopWidth) || 0) +
+      (parseFloat(lyricsStyle.borderBottomWidth) || 0) +
+      (parseFloat(lyricsStyle.paddingTop) || 0) +
+      (parseFloat(lyricsStyle.paddingBottom) || 0);
+    this.measuredFlowBaseHeight = Math.max(
+      0,
+      lyricsRect.height - verticalChrome,
+    );
+    const contentOriginY =
+      lyricsRect.top +
+      (parseFloat(lyricsStyle.borderTopWidth) || 0) +
+      (parseFloat(lyricsStyle.paddingTop) || 0);
+    for (const line of this.lines) {
+      const lineRect = line.container.getBoundingClientRect();
+      const lineStyle = getComputedStyle(line.container);
+      line.cachedBaseOffsetTop = line.container.offsetTop;
+      line.cachedBaseHeight = line.container.offsetHeight;
+      line.cachedBaseVocalsHeight = line.vocals.offsetHeight;
+      line.cachedOffsetTop = line.cachedBaseOffsetTop;
+      line.cachedHeight = line.cachedBaseHeight;
+      line.cachedVocalsHeight = line.cachedBaseVocalsHeight;
+      line.cachedVirtualTop = lineRect.top - contentOriginY;
+      line.cachedMarginTop = parseFloat(lineStyle.marginTop) || 0;
+
+      if (line.dots) {
+        const probe = line.container.cloneNode(true) as HTMLButtonElement;
+        probe.classList.remove("Sung");
+        probe.classList.add("Active");
+        probe.style.position = "absolute";
+        probe.style.visibility = "hidden";
+        probe.style.pointerEvents = "none";
+        probe.style.transition = "none";
+        probe.style.width = `${lineRect.width}px`;
+        this.lyricsContainer.appendChild(probe);
+        const probeStyle = getComputedStyle(probe);
+        line.virtualExpandedHeight = probe.offsetHeight;
+        line.virtualExpandedMarginTop = parseFloat(probeStyle.marginTop) || 0;
+        line.virtualExpandedMarginBottom = parseFloat(probeStyle.marginBottom) || 0;
+        probe.remove();
+      }
+    }
+
+    for (const line of this.lines) {
+      if (line.dots) this.evaluateClass(line);
+    }
+
     this.cachedMaxScroll = Math.max(
       0,
       scrollEl.scrollHeight - scrollEl.clientHeight,
     );
+  }
+
+  /** Convert the measured list into fixed-height flow shells. Every lightweight
+   * shell stays in normal flow, while complete line DOM is connected only near
+   * playback or the viewport. Mounting content cannot move later shells. */
+  private enableFullLineVirtualization(): void {
+    if (this.fullLineVirtualization || this.lines.length === 0) return;
+
+    const surfaceHeight = this.measuredFlowBaseHeight;
+
+    const surface = document.createElement("div");
+    surface.className = "VL-VirtualLineSurface";
+    surface.style.height = `${surfaceHeight}px`;
+    this.lyricsContainer.classList.add("VL-FullLineVirtualized");
+    this.lyricsContainer.insertBefore(
+      surface,
+      this.lines[0]?.container ?? this.lyricsContainer.firstChild,
+    );
+
+    const slotStarts = this.lines.map((line) =>
+      line.cachedVirtualTop - line.cachedMarginTop
+    );
+    const leadingSpace = Math.max(0, slotStarts[0] ?? 0);
+    surface.style.paddingTop = `${leadingSpace}px`;
+
+    for (let index = 0; index < this.lines.length; index++) {
+      const line = this.lines[index];
+      const slotStart = slotStarts[index];
+      const nextSlotStart = slotStarts[index + 1] ?? surfaceHeight;
+      line.cachedVirtualSlotHeight = Math.max(0, nextSlotStart - slotStart);
+
+      const positioner = document.createElement("div");
+      positioner.className = "VL-VirtualLinePositioner";
+      positioner.style.height = `${line.cachedVirtualSlotHeight}px`;
+      positioner.appendChild(line.container);
+      surface.appendChild(positioner);
+      line.positioner = positioner;
+      line.attached = true;
+    }
+
+    this.virtualSurface = surface;
+    this.virtualSurfaceBaseHeight = surfaceHeight;
+    this.fullLineVirtualization = true;
+    this.measuredVirtualWidth = this.readVirtualContentWidth();
+    this.virtualMountSignature = "";
+    this.virtualInterludeSignature = "";
+    this.updateVirtualInterludeGeometry(true);
+    this.simpleBar?.recalculate();
+    const scrollEl = this.simpleBar!.getScrollElement();
+    this.cachedContainerHeight = scrollEl.clientHeight;
+    this.cachedMaxScroll = Math.max(
+      0,
+      scrollEl.scrollHeight - scrollEl.clientHeight,
+    );
+  }
+
+  private readVirtualContentWidth(): number {
+    const style = getComputedStyle(this.lyricsContainer);
+    return Math.round(
+      this.lyricsContainer.clientWidth -
+      (parseFloat(style.paddingLeft) || 0) -
+      (parseFloat(style.paddingRight) || 0),
+    );
+  }
+
+  /** Reproduce the only intentional runtime flow change in the old list:
+   * interlude shells expand while Active and collapse afterward. */
+  private updateVirtualInterludeGeometry(force = false): void {
+    const surface = this.virtualSurface;
+    if (!this.fullLineVirtualization || !surface) return;
+
+    const signature = this.lines
+      .map((line, index) => line.dots && line.state === "Active" ? index : -1)
+      .filter((index) => index >= 0)
+      .join(",");
+    if (!force && signature === this.virtualInterludeSignature) return;
+    this.virtualInterludeSignature = signature;
+
+    let accumulatedShift = 0;
     for (const line of this.lines) {
-      line.cachedOffsetTop = line.container.offsetTop;
-      line.cachedHeight = line.container.offsetHeight;
-      line.cachedVocalsHeight = line.vocals.offsetHeight;
+      const expanded = !!line.dots && line.state === "Active";
+      const expandedSpace = expanded
+        ? line.virtualExpandedMarginTop +
+          line.virtualExpandedHeight +
+          line.virtualExpandedMarginBottom
+        : 0;
+      line.positioner?.style.setProperty(
+        "height",
+        `${line.cachedVirtualSlotHeight + expandedSpace}px`,
+      );
+
+      line.cachedOffsetTop =
+        line.cachedBaseOffsetTop +
+        accumulatedShift +
+        (expanded ? line.virtualExpandedMarginTop : 0);
+      line.cachedHeight = expanded
+        ? line.virtualExpandedHeight
+        : line.cachedBaseHeight;
+      line.cachedVocalsHeight = expanded
+        ? line.virtualExpandedHeight
+        : line.cachedBaseVocalsHeight;
+
+      if (expanded) {
+        accumulatedShift += expandedSpace;
+      }
+    }
+
+    surface.style.height = `${this.virtualSurfaceBaseHeight + accumulatedShift}px`;
+    this.simpleBar?.recalculate();
+    if (this.simpleBar) {
+      const scrollEl = this.simpleBar.getScrollElement();
+      this.cachedMaxScroll = Math.max(
+        0,
+        scrollEl.scrollHeight - scrollEl.clientHeight,
+      );
+    }
+    this.virtualMountSignature = "";
+    this.refreshFullLineVirtualization(true);
+  }
+
+  /** Restore every row to normal flow. Used only for a width-change remeasure
+   * and makes the A/B implementation removable without rebuilding line DOM. */
+  private disableFullLineVirtualization(): void {
+    const surface = this.virtualSurface;
+    if (!this.fullLineVirtualization || !surface) return;
+
+    const fragment = document.createDocumentFragment();
+    for (const line of this.lines) {
+      fragment.appendChild(line.container);
+      line.positioner?.remove();
+      line.positioner = null;
+      line.attached = true;
+    }
+    surface.replaceWith(fragment);
+    this.virtualSurface = null;
+    this.virtualSurfaceBaseHeight = 0;
+    this.fullLineVirtualization = false;
+    this.virtualMountSignature = "";
+    this.virtualInterludeSignature = "";
+    this.lyricsContainer.classList.remove("VL-FullLineVirtualized");
+  }
+
+  private scheduleVirtualLayoutRemeasure(): void {
+    if (!this.fullLineVirtualization || this.destroyed) return;
+    const width = this.readVirtualContentWidth();
+    if (width <= 0 || Math.abs(width - this.measuredVirtualWidth) < 1) return;
+    if (this.virtualRemeasureRaf) cancelAnimationFrame(this.virtualRemeasureRaf);
+
+    this.virtualRemeasureRaf = requestAnimationFrame(() => {
+      this.virtualRemeasureRaf = 0;
+      if (this.destroyed || !this.fullLineVirtualization) return;
+      const liveWidth = this.readVirtualContentWidth();
+      if (liveWidth <= 0 || Math.abs(liveWidth - this.measuredVirtualWidth) < 1) {
+        return;
+      }
+
+      const scrollTop = this.frameScrollTop;
+      this.disableFullLineVirtualization();
+      this.cacheLayoutPositions();
+      this.enableFullLineVirtualization();
+      this.frameScrollTop = Math.max(0, Math.min(scrollTop, this.cachedMaxScroll));
+      this.simpleBar!.getScrollElement().scrollTop = this.frameScrollTop;
+      this.scroller?.syncPosition(this.frameScrollTop);
+      this.applyVirtualizationWindow(this.referenceLineIndex, true);
+    });
+  }
+
+  private setLineAttached(index: number, attached: boolean): void {
+    const line = this.lines[index];
+    const positioner = line?.positioner;
+    if (!line || !positioner || line.attached === attached) return;
+
+    if (!attached) {
+      line.container.remove();
+      line.attached = false;
+      return;
+    }
+
+    positioner.appendChild(line.container);
+    line.attached = true;
+  }
+
+  private refreshFullLineVirtualization(force = false): void {
+    if (!this.fullLineVirtualization || !this.virtualSurface) return;
+
+    const referenceIndex = this.referenceLineIndex;
+    const viewportHeight = this.cachedContainerHeight;
+    const overscan = viewportHeight * FULL_LINE_VIEWPORT_OVERSCAN;
+    const viewportStart = this.frameScrollTop - overscan;
+    const viewportEnd = this.frameScrollTop + viewportHeight + overscan;
+
+    let firstVisible = this.lines.length;
+    let lastVisible = -1;
+    for (let i = 0; i < this.lines.length; i++) {
+      const line = this.lines[i];
+      const lineBottom = line.cachedOffsetTop + line.cachedHeight;
+      if (lineBottom >= viewportStart && line.cachedOffsetTop <= viewportEnd) {
+        if (firstVisible === this.lines.length) firstVisible = i;
+        lastVisible = i;
+      }
+    }
+
+    const playbackStart = Math.max(0, referenceIndex - VIRTUALIZATION_WINDOW);
+    const playbackEnd = Math.min(
+      this.lines.length - 1,
+      referenceIndex + VIRTUALIZATION_WINDOW,
+    );
+    const signature =
+      `${playbackStart}:${playbackEnd}:${firstVisible}:${lastVisible}`;
+    if (!force && signature === this.virtualMountSignature) return;
+    this.virtualMountSignature = signature;
+
+    for (let i = 0; i < this.lines.length; i++) {
+      const inPlaybackWindow =
+        referenceIndex >= 0 && i >= playbackStart && i <= playbackEnd;
+      const inViewportWindow = i >= firstVisible && i <= lastVisible;
+      this.setLineAttached(i, inPlaybackWindow || inViewportWindow);
     }
   }
 
@@ -1136,8 +1501,14 @@ export default class LyricsRenderer {
    * `referenceIndex`. Runs every frame but is a no-op unless a line actually
    * crosses the window boundary. */
   private lastVirtualizedRefIndex = -1;
-  private applyVirtualizationWindow(referenceIndex: number): void {
-    if (referenceIndex === this.lastVirtualizedRefIndex) return;
+  private applyVirtualizationWindow(referenceIndex: number, force = false): void {
+    this.referenceLineIndex = referenceIndex;
+    if (this.fullLineVirtualization) {
+      this.lastVirtualizedRefIndex = referenceIndex;
+      this.refreshFullLineVirtualization(force);
+      return;
+    }
+    if (!force && referenceIndex === this.lastVirtualizedRefIndex) return;
     this.lastVirtualizedRefIndex = referenceIndex;
     for (let i = 0; i < this.lines.length; i++) {
       const line = this.lines[i];
@@ -1172,6 +1543,7 @@ export default class LyricsRenderer {
         // user input and must pause auto-scroll just like mouse-wheel scrolling.
         const userMovedScroll = Math.round(scrollTop) !== Math.round(this.frameScrollTop);
         this.frameScrollTop = scrollTop;
+        this.refreshFullLineVirtualization();
         if (userMovedScroll) {
           this.handleUserScrollInteraction();
         }
@@ -1267,6 +1639,7 @@ export default class LyricsRenderer {
     const scrollTop = this.simpleBar?.getScrollElement().scrollTop ?? this.frameScrollTop;
     this.frameScrollTop = scrollTop;
     this.scroller?.syncPosition(scrollTop);
+    this.refreshFullLineVirtualization();
     return scrollTop;
   }
 
@@ -1336,6 +1709,8 @@ export default class LyricsRenderer {
 
   private onFrame(frame: SharedFrame): void {
     if (this.destroyed) return;
+    const profiling = isPerformanceLoggingEnabled();
+    const metricPrefix = this.diagnosticMetricPrefix;
 
     if (this.lastAnimationStyle === null) {
       this.lastAnimationStyle = frame.ctx.animationStyle;
@@ -1395,9 +1770,14 @@ export default class LyricsRenderer {
     // (including after a big seek) is always mounted before we try to animate it.
     const refIdx = this.computeReferenceIndex(currentTimestamp);
     if (refIdx !== this.lastVirtualizedRefIndex) {
+      const virtualizationStartedAt = profiling ? performance.now() : 0;
       this.applyVirtualizationWindow(refIdx);
+      if (profiling) {
+        recordPerformanceDuration(`${metricPrefix}.virtualization`, performance.now() - virtualizationStartedAt);
+      }
     }
 
+    const animationStartedAt = profiling ? performance.now() : 0;
     for (const line of this.lines) {
       this.animateLine(
         line,
@@ -1407,6 +1787,9 @@ export default class LyricsRenderer {
         frame.springConfig,
         frame.ctx,
       );
+    }
+    if (profiling) {
+      recordPerformanceDuration(`${metricPrefix}.animation`, performance.now() - animationStartedAt);
     }
 
     this.lyricsEnded =
@@ -1427,8 +1810,13 @@ export default class LyricsRenderer {
       this.scrollToActive();
     }
 
+    const blurStartedAt = profiling ? performance.now() : 0;
     this.updateBlur(frame.ctx);
+    if (profiling) {
+      recordPerformanceDuration(`${metricPrefix}.blur`, performance.now() - blurStartedAt);
+    }
 
+		const scrollStartedAt = profiling ? performance.now() : 0;
 		if (this.scroller) {
 			if (this.pendingSeekTimestamp !== null) {
 				// Keep the existing spring from continuing toward the old active line
@@ -1442,6 +1830,9 @@ export default class LyricsRenderer {
 				this.scroller.syncPosition(this.frameScrollTop);
 			}
 		}
+    if (profiling) {
+      recordPerformanceDuration(`${metricPrefix}.scroll`, performance.now() - scrollStartedAt);
+    }
 
     if (this.autoScrollBlocked) {
       this.updateSyncButtonVisibility();
@@ -2009,6 +2400,7 @@ export default class LyricsRenderer {
       line.state = stateNow;
       line.settled = false;
       this.evaluateClass(line);
+      if (line.dots) this.updateVirtualInterludeGeometry();
 
       if (stateNow === "Idle") {
         this.snapToIdle(line, ctx.animationStyle);
@@ -2507,16 +2899,21 @@ export default class LyricsRenderer {
 		);
 		if (nextScrollTop !== this.frameScrollTop) {
 			this.frameScrollTop = nextScrollTop;
+			this.refreshFullLineVirtualization();
 			scrollEl.scrollTop = nextScrollTop;
 		}
 		this.programmaticScroll = false;
 	}
 
   public destroy(): void {
+    if (this.destroyed) return;
     this.destroyed = true;
+    incrementPerformanceCounter(`renderer.destroys.${this.diagnosticLabel}`);
     this.unregisterFrame?.();
     this.unregisterFrame = null;
     if (this.userScrollTimer) clearTimeout(this.userScrollTimer);
+    if (this.virtualRemeasureRaf) cancelAnimationFrame(this.virtualRemeasureRaf);
+    this.virtualRemeasureRaf = 0;
     this.scroller?.dispose();
     this.simpleBar?.unMount();
     this.simpleBar = null;

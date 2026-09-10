@@ -113,6 +113,28 @@ html.vl-centered-text .VividLyrics-FullscreenContent .VL-FS-Line,
     overflow-x: clip;
 }
 
+// Full-line virtualization A/B: lightweight fixed-height shells preserve the
+// measured flow while complete lyric rows are connected only near playback or
+// the viewport. Inserting a row cannot move any later shell.
+.Lyrics.VL-FullLineVirtualized {
+    position: relative;
+}
+
+.VL-VirtualLineSurface {
+    position: relative;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+}
+
+.VL-VirtualLinePositioner {
+    position: relative;
+    display: flow-root;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+}
+
 #VividLyrics-MainPage .Lyrics {
     padding: 0 clamp(2rem, 10vw, 20rem);
 }

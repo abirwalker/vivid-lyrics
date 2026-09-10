@@ -1,6 +1,13 @@
 import { get } from "../stores/settings";
 import { getActiveSplines, type SpicySpringConfig } from "./spicy-spring";
 import { getSmoothProgress } from "./playback-clock";
+import {
+  isPerformanceLoggingEnabled,
+  incrementPerformanceCounter,
+  recordPerformanceDuration,
+  recordPerformanceFrame,
+  setPerformanceGauge,
+} from "../tools/performance-logger";
 
 export interface FrameCtx {
   animationStyle: "spicy-bounce" | "wobble";
@@ -19,16 +26,79 @@ export interface SharedFrame {
 }
 
 type FrameListener = (frame: SharedFrame) => boolean;
+type RegisteredListener = {
+  label: string;
+  listener: FrameListener;
+};
+
+type AnimationFrameDriver = {
+  request: (callback: FrameRequestCallback) => number;
+  cancel: (handle: number) => void;
+};
+
+/**
+ * Spotify wraps the main window's requestAnimationFrame. Its wrapper performs
+ * an OverlayScrollbars environment measurement after callbacks, invalidating
+ * the document and synchronously reading scrollWidth. A clean same-origin
+ * realm exposes Chromium's native RAF without changing cadence or timestamps.
+ */
+function createAnimationFrameDriver(): AnimationFrameDriver {
+  let realm: HTMLIFrameElement | null = null;
+  try {
+    realm = document.createElement("iframe");
+    realm.setAttribute("aria-hidden", "true");
+    realm.tabIndex = -1;
+    realm.style.cssText =
+      "position:fixed;width:0;height:0;border:0;pointer-events:none;opacity:0";
+    document.documentElement.appendChild(realm);
+
+    const frameWindow = realm.contentWindow;
+    if (frameWindow) {
+      // Take pristine Web API functions from the clean realm, but invoke them
+      // with Spotify's main window as their receiver. The callbacks then use
+      // the main document's display-rate scheduler rather than the hidden
+      // iframe's throttled scheduler.
+      const nativeRequest = frameWindow.requestAnimationFrame;
+      const nativeCancel = frameWindow.cancelAnimationFrame;
+      const request = (callback: FrameRequestCallback): number =>
+        Reflect.apply(nativeRequest, window, [callback]) as number;
+      const cancel = (handle: number): void => {
+        Reflect.apply(nativeCancel, window, [handle]);
+      };
+
+      // Verify the cross-realm Window receiver before removing the temporary
+      // realm. Chromium accepts this; the fallback below covers other builds.
+      const probe = request(() => {});
+      cancel(probe);
+      realm.remove();
+      return {
+        request,
+        cancel,
+      };
+    }
+  } catch {
+    // Fall through to Spotify's main-window implementation when this Chromium
+    // build disallows access to a same-origin about:blank realm.
+  }
+  realm?.remove();
+
+  return {
+    request: window.requestAnimationFrame.bind(window),
+    cancel: window.cancelAnimationFrame.bind(window),
+  };
+}
 
 class RenderLoopCoordinator {
-  private listeners = new Map<symbol, FrameListener>();
+  private listeners = new Map<symbol, RegisteredListener>();
+  private frameDriver: AnimationFrameDriver | null = null;
   private rafId = 0;
   private lastFrameTime = 0;
   private running = false;
+  private profiledLabels = new Set<string>();
 
-  register(listener: FrameListener): () => void {
+  register(listener: FrameListener, label = "unknown"): () => void {
     const id = Symbol("frame-listener");
-    this.listeners.set(id, listener);
+    this.listeners.set(id, { label, listener });
     this.ensureRunning();
     return () => this.unregister(id);
   }
@@ -41,8 +111,10 @@ class RenderLoopCoordinator {
   private ensureRunningInternal(): void {
     if (this.running) return;
     this.running = true;
+    incrementPerformanceCounter("renderLoop.starts");
     this.lastFrameTime = performance.now();
-    this.rafId = requestAnimationFrame(this.tick);
+    this.frameDriver ??= createAnimationFrameDriver();
+    this.rafId = this.frameDriver.request(this.tick);
   }
 
   /** Force the RAF loop to restart if it stopped */
@@ -52,7 +124,9 @@ class RenderLoopCoordinator {
 
   private stop(): void {
     this.running = false;
-    cancelAnimationFrame(this.rafId);
+    incrementPerformanceCounter("renderLoop.stops");
+    this.frameDriver?.cancel(this.rafId);
+    setPerformanceGauge("renderLoop.running", 0);
   }
 
   private tick = (now: number): void => {
@@ -60,6 +134,10 @@ class RenderLoopCoordinator {
 
     const deltaTime = Math.max((now - this.lastFrameTime) / 1000, 0);
     this.lastFrameTime = now;
+    const profiling = isPerformanceLoggingEnabled();
+    const loopStartedAt = profiling ? performance.now() : 0;
+    const setupStartedAt = loopStartedAt;
+    if (profiling) recordPerformanceFrame(now);
 
     const blurStrength = get("blurStrength");
     const animationStyle = get("animationStyle");
@@ -78,11 +156,33 @@ class RenderLoopCoordinator {
         splines: getActiveSplines(),
       },
     };
+    if (profiling) {
+      recordPerformanceDuration("renderLoop.setup", performance.now() - setupStartedAt);
+    }
 
     let anyActive = false;
-    for (const listener of this.listeners.values()) {
+    const labelCounts = profiling ? new Map<string, number>() : null;
+    for (const { label, listener } of this.listeners.values()) {
+      const listenerStartedAt = profiling ? performance.now() : 0;
       const active = listener(frame);
+      if (profiling) {
+        recordPerformanceDuration(`renderer.${label}`, performance.now() - listenerStartedAt);
+        labelCounts!.set(label, (labelCounts!.get(label) ?? 0) + 1);
+      }
       if (active) anyActive = true;
+    }
+
+    if (profiling) {
+      setPerformanceGauge("renderLoop.running", 1);
+      setPerformanceGauge("renderLoop.listeners", this.listeners.size);
+      for (const label of this.profiledLabels) {
+        if (!labelCounts!.has(label)) setPerformanceGauge(`renderers.${label}`, 0);
+      }
+      for (const [label, count] of labelCounts!) {
+        setPerformanceGauge(`renderers.${label}`, count);
+      }
+      this.profiledLabels = new Set(labelCounts!.keys());
+      recordPerformanceDuration("renderLoop.total", performance.now() - loopStartedAt);
     }
 
     if (!anyActive && this.listeners.size > 0) {
@@ -90,7 +190,7 @@ class RenderLoopCoordinator {
       return;
     }
 
-    this.rafId = requestAnimationFrame(this.tick);
+    this.rafId = this.frameDriver!.request(this.tick);
   };
 }
 

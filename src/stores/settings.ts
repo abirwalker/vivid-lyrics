@@ -32,6 +32,7 @@ export type Settings = {
   npvAmbiance: boolean;
   mainPlayerWidget: boolean;
   fullscreenPlayerWidget: boolean;
+  performanceLogging: boolean;
   autoResumeDelay: number;
 };
 
@@ -66,6 +67,7 @@ const defaults: Settings = {
   npvAmbiance: true,
   mainPlayerWidget: false,
   fullscreenPlayerWidget: true,
+  performanceLogging: false,
   autoResumeDelay: 10,
 };
 

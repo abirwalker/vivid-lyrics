@@ -10,6 +10,7 @@ import {
   loadCustomFont,
   CUSTOM_FONT_FAMILY,
 } from "../utils/font-manager";
+import { copyLatestPerformanceReport } from "../tools/performance-logger";
 import { CloseIcon } from "./shared/svg-icons";
 import "../styles/settings.scss";
 
@@ -195,6 +196,26 @@ function makeSoon(): HTMLElement {
   el.className = "VL-Soon";
   el.textContent = "SOON\u2122";
   return el;
+}
+
+function makeCopyPerformanceButton(): HTMLButtonElement {
+  const button = document.createElement("button");
+  button.className = "VL-ToolBtn";
+  button.textContent = "Copy Report";
+  button.addEventListener("click", async () => {
+    button.disabled = true;
+    try {
+      await copyLatestPerformanceReport();
+      button.textContent = "Copied!";
+    } catch {
+      button.textContent = "Copy Failed";
+    }
+    window.setTimeout(() => {
+      button.textContent = "Copy Report";
+      button.disabled = false;
+    }, 1500);
+  });
+  return button;
 }
 
 function buildContent(): HTMLElement {
@@ -512,6 +533,18 @@ function buildContent(): HTMLElement {
           romanPositionRow.style.display = v ? "" : "none";
         }),
         after: romanPositionRow,
+      },
+    ]],
+    ["Tools", [
+      {
+        label: "Performance Diagnostics",
+        desc: "Print 5-second timing and activity reports to DevTools",
+        control: makeToggle(s.performanceLogging, (v) => set("performanceLogging", v)),
+      },
+      {
+        label: "Diagnostic Report",
+        desc: "Copy the latest performance snapshot as JSON",
+        control: makeCopyPerformanceButton(),
       },
     ]],
     ["Coming Soon", [

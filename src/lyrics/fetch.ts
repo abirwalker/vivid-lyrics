@@ -1,17 +1,31 @@
 import type { TransformedLyrics } from "./types";
 import { query } from "./api";
 import { adaptLyrics } from "./adapt";
+import { unpackLyrics } from "./unpack";
 import { getLyricsFromCache, setLyricsCache, setLyricsCacheNegative } from "./cache";
 
 async function getAccessToken(): Promise<string> {
   try {
-    const result = await Spicetify.CosmosAsync.get("sp://oauth/v2/token");
-    return result.accessToken;
+    const state = (Spicetify.Platform as any)?.AuthorizationAPI?.getState?.();
+    const token = state?.token?.accessToken;
+    if (state?.isAuthorized !== false && typeof token === "string" && token.trim()) {
+      return token;
+    }
   } catch {
-    const token = (Spicetify.Platform?.Session as any)?.accessToken;
-    if (token) return token;
-    throw new Error("Could not obtain access token");
+    // Older clients may not expose the authorization store.
   }
+
+  try {
+    const result = await Spicetify.CosmosAsync.get("sp://oauth/v2/token");
+    const token = result?.accessToken;
+    if (typeof token === "string" && token.trim()) return token;
+  } catch {
+    // The legacy OAuth resolver is unavailable on some Spotify clients.
+  }
+
+  const token = (Spicetify.Platform?.Session as any)?.accessToken;
+  if (typeof token === "string" && token.trim()) return token;
+  throw new Error("Could not obtain access token from Spotify authorization or legacy sources");
 }
 
 function getTrackId(uri: string): string | null {
@@ -51,7 +65,7 @@ export async function fetchLyrics(uri: string): Promise<TransformedLyrics | null
      }
      if (result.httpStatus !== 200) return null;
 
-     const lyrics = adaptLyrics(result.data);
+     const lyrics = adaptLyrics(unpackLyrics(result.data));
     setLyricsCache(trackId, lyrics);
     return lyrics;
   } catch (err) {
