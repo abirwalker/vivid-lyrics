@@ -35,7 +35,6 @@ export class SmoothLyricsScroller {
   private resumeTimer: number | null = null;
   private onUserInput: (() => void) | null = null;
   private onProgrammaticScroll: ((event: Event) => void) | null = null;
-  private prevLineCenter = -1;
   private lastAppliedScrollTop = Number.NaN;
   private pendingProgrammaticScrollTop: number | null = null;
   private maxScroll = 0;
@@ -65,14 +64,10 @@ export class SmoothLyricsScroller {
     cachedMaxScroll: number,
   ) {
     this.maxScroll = cachedMaxScroll;
-    if (cachedLineCenter === this.prevLineCenter) return;
-    this.prevLineCenter = cachedLineCenter;
-
     const target = this.clampTarget(
       cachedLineCenter - cachedContainerHeight * this.focusRatio,
       cachedMaxScroll,
     );
-    if (Math.abs(this.current - target) < 0.5) return;
     this.target = target;
     if (this.userScrolling) return;
     if (!this.initialized) {
@@ -153,6 +148,7 @@ export class SmoothLyricsScroller {
   private bindProgrammaticScrollIsolation() {
     const scrollEl = this.simpleBar.getScrollElement();
     this.onProgrammaticScroll = (event: Event) => {
+      if (event.target !== scrollEl) return;
       const expected = this.pendingProgrammaticScrollTop;
       if (expected === null) return;
 

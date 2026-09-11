@@ -74,6 +74,7 @@ aside:has(.VL-FluidMeshBg) {
 }
 
 #VividLyrics-Card {
+    contain: layout paint;
     container-type: inline-size;
     --vl-default-font-size: clamp(1.85rem, 7cqw, 3.5rem);
     display: flex;
@@ -101,22 +102,39 @@ aside:has(.VL-FluidMeshBg) {
     z-index: 2;
 
     .VL-CardHeader {
+        --close-growth: 0px;
+        --expand-growth: 0px;
+        --romanize-growth: 0px;
+
+        &:has(.close-btn:is(:hover, :focus-visible)) { --close-growth: 40px; }
+        &:has(.expand-btn:is(:hover, :focus-visible)) { --expand-growth: 104px; }
+        &:has(.romanize-btn:not(.romanize-active):is(:hover, :focus-visible)) { --romanize-growth: 112px; }
+        &:has(.romanize-btn.romanize-active:is(:hover, :focus-visible)) { --romanize-growth: 92px; }
+
         display: flex !important;
         align-items: center;
         justify-content: space-between;
         gap: 8px;
         flex-shrink: 0;
-        height: 25px;
-        min-height: 25px;
+        height: 28px;
+        min-height: 28px;
         position: relative;
         z-index: 10;
-        contain: layout;
+        contain: layout paint;
         transform: translateZ(0);
         backface-visibility: hidden;
+
+        &:has(> .VL-ShowBtn) {
+            contain: layout;
+            height: auto;
+        }
     }
 
     .VL-CardTitle {
+        clip-path: inset(0 calc(var(--close-growth) + var(--expand-growth) + var(--romanize-growth)) 0 0);
+        transition: clip-path 0.25s cubic-bezier(0.4, 0, 0.2, 1);
         flex: 1 1 0%;
+        min-width: 0;
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
@@ -126,31 +144,42 @@ aside:has(.VL-FluidMeshBg) {
     }
 
     .VL-HeaderActions {
+        position: relative;
+        width: 58px;
+        height: 28px;
+        &:has(.romanize-btn) { width: 88px; }
         display: flex;
-        gap: 0;
+        align-items: center;
+        gap: 2px;
         margin-left: auto;
         background: transparent;
+        contain: layout;
+        flex-shrink: 0;
     }
 
     .action-btn {
+        // Fixed boxes keep expansion out of layout; clipping preserves hit targets.
+        position: absolute;
+        top: 0;
         height: 28px;
-        width: 28px;
+        width: var(--expanded-width);
+        clip-path: inset(0 0 0 calc(var(--expanded-width) - 28px) round 14px);
         min-width: 0;
-        padding: 0;
+        padding: 0 7px;
         margin: 0;
         border: none;
         border-radius: 14px;
         display: flex;
         align-items: center;
-        justify-content: center;
+        justify-content: flex-start;
         cursor: pointer;
         overflow: hidden;
         background: transparent;
         color: var(--text-subdued, #b3b3b3);
         transform: translateZ(0);
-        will-change: width;
         transition:
-            width 0.25s cubic-bezier(0.4, 0, 0.2, 1),
+            clip-path 0.25s cubic-bezier(0.4, 0, 0.2, 1),
+            transform 0.25s cubic-bezier(0.4, 0, 0.2, 1),
             background-color 0.2s ease,
             color 0.2s ease;
         flex-shrink: 0;
@@ -162,7 +191,8 @@ aside:has(.VL-FluidMeshBg) {
             align-items: center;
             justify-content: center;
             flex-shrink: 0;
-            transform: translateZ(0);
+            transform: translateX(calc(var(--expanded-width) - 28px));
+            transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 
             svg {
                 fill: currentColor;
@@ -171,105 +201,65 @@ aside:has(.VL-FluidMeshBg) {
                 height: 14px;
             }
         }
+
+        .btn-text {
+            font-size: 12px;
+            font-weight: 500;
+            margin-left: 8px;
+            opacity: 0;
+            transform: translateX(calc(var(--expanded-width) - 28px));
+            transition:
+                transform 0.25s cubic-bezier(0.4, 0, 0.2, 1),
+                opacity 0.15s ease;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+
+        &:is(:hover, :focus-visible) {
+            clip-path: inset(0 0 0 0 round 14px);
+            background-color: rgba(255, 255, 255, 0.1);
+            color: var(--text-base, #fff);
+
+            .icon, .btn-text { transform: translateX(0); }
+            .btn-text {
+                opacity: 1;
+                transition-delay: 0s, 0.08s;
+            }
+        }
+        &:focus-visible { outline: 2px solid currentColor; outline-offset: -2px; }
     }
 
     .expand-btn {
-        padding: 0 7px;
-        justify-content: flex-start;
-
+        --expanded-width: 132px;
+        right: 30px;
+        transform: translateX(calc(0px - var(--close-growth)));
         .icon svg {
             width: 18px;
             height: 18px;
         }
 
-        .btn-text {
-            font-size: 12px;
-            font-weight: 500;
-            margin-left: 8px;
-            opacity: 0;
-            transition: opacity 0.15s ease;
-            white-space: nowrap;
-            flex-shrink: 0;
-        }
-
-        &:hover {
-            width: 132px;
-            background-color: rgba(255, 255, 255, 0.1);
-            color: var(--text-base, #fff);
-
-            .btn-text {
-                opacity: 1;
-                transition-delay: 0.08s;
-            }
-        }
     }
 
     .close-btn {
-        padding: 0 7px;
-        justify-content: flex-start;
-
-        .btn-text {
-            font-size: 12px;
-            font-weight: 500;
-            margin-left: 8px;
-            opacity: 0;
-            transition: opacity 0.15s ease;
-            white-space: nowrap;
-            flex-shrink: 0;
-        }
-
-        &:hover {
-            width: 68px;
-            background-color: rgba(255, 255, 255, 0.1);
-            color: var(--text-base, #fff);
-
-            .btn-text {
-                opacity: 1;
-                transition-delay: 0.08s;
-            }
-        }
+        --expanded-width: 68px;
+        right: 0;
     }
 
     .romanize-btn {
-        padding: 0 7px;
-        justify-content: flex-start;
-
+        --expanded-width: 140px;
+        right: 60px;
+        transform: translateX(calc(0px - var(--close-growth) - var(--expand-growth)));
         .icon svg {
             width: 18px;
             height: 18px;
         }
 
-        .btn-text {
-            font-size: 12px;
-            font-weight: 500;
-            margin-left: 8px;
-            opacity: 0;
-            transition: opacity 0.15s ease;
-            white-space: nowrap;
-            flex-shrink: 0;
-        }
-
-        &:hover {
-            background-color: rgba(255, 255, 255, 0.1);
-            color: var(--text-base, #fff);
-
-            .btn-text {
-                opacity: 1;
-                transition-delay: 0.08s;
-            }
-        }
-
-        &:not(.romanize-active):hover {
-            width: 140px;
-        }
-
-        &.romanize-active:hover {
-            width: 120px;
-        }
+        &.romanize-active { --expanded-width: 120px; }
     }
 
     .VL-ShowBtn {
         display: inline-flex;
+        flex-shrink: 0;
         align-items: center;
         justify-content: center;
         width: auto;

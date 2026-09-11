@@ -10,14 +10,10 @@ let predictedPosition = 0; // seconds
 let lastPredictTime = 0; // performance.now() ms
 let lastTrackUri: string | null = null;
 let durationSeconds = 0;
-let syncRevision = 0;
-let latestSyncRequest = 0;
 let syncTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
 const SEEK_SNAP_THRESHOLD_S = 0.5;
-// performance.now() is stable between player events, so a slow health-check is
-// enough. Keeping this at 1 Hz avoids injecting four IPC completions per second
-// into Spotify's already busy homepage render workload.
+// Progress events stop while paused; this also picks up paused seeks.
 const SYNC_INTERVAL_MS = 1000;
 
 function getTrackUri(): string | null {
@@ -49,52 +45,26 @@ function seedFromPlayer(): void {
   lastPredictTime = now;
 }
 
-/** Sample Spotify's position, compensating approximately for request latency. */
+/** Sample the same player timeline used by progress events and lyric seeks. */
 export async function syncPlaybackPosition(): Promise<void> {
   markPerformanceEvent("playbackClock.sync.start");
   const player = Spicetify.Player;
-  const platform = Spicetify.Platform;
-  if (!player || !platform) return;
+  if (!player) return;
 
   const currentUri = getTrackUri();
   if (currentUri !== lastTrackUri) {
-    syncRevision++;
     seedFromPlayer();
   }
 
-  const requestRevision = syncRevision;
-  const requestId = ++latestSyncRequest;
-  const requestUri = currentUri;
   const requestStartedAt = performance.now();
-  let sampledPosition: number;
-  let sampledAt: number;
-
-  try {
-    const contextPlayer = (platform as any).PlayerAPI?._contextPlayer;
-    if (contextPlayer?.getPositionState) {
-      const { position } = await contextPlayer.getPositionState({});
-      const requestFinishedAt = performance.now();
-      sampledAt = (requestStartedAt + requestFinishedAt) / 2;
-      sampledPosition = Number(position) / 1000;
-    } else {
-      sampledAt = performance.now();
-      sampledPosition = (player.getProgress?.() ?? 0) / 1000;
-    }
-  } catch {
-    sampledAt = performance.now();
-    sampledPosition = (player.getProgress?.() ?? 0) / 1000;
-  }
+  // getProgress already extrapolates Spotify's timestamped player state.
+  // Mixing it with the private context position (without its timestamp/error)
+  // lets two different timelines repeatedly undo each other's seek updates.
+  const sampledPosition = (player.getProgress?.() ?? Number.NaN) / 1000;
+  const sampledAt = performance.now();
   markPerformanceEvent("playbackClock.sync.complete");
   recordPerformanceDuration("playbackClock.sync", performance.now() - requestStartedAt);
 
-  // A seek, pause/resume, or song change may have happened while the IPC
-  // request was in flight. Never let that stale response rewind the clock.
-  if (
-    requestId !== latestSyncRequest ||
-    requestRevision !== syncRevision ||
-    requestUri !== getTrackUri()
-  )
-    return;
   if (!Number.isFinite(sampledPosition)) return;
 
   durationSeconds = readDuration();
@@ -114,7 +84,6 @@ function scheduleNextSync(): void {
 /** Reset immediately after playback discontinuities. */
 export function resetPlaybackClock(): void {
   incrementPerformanceCounter("playbackClock.resets");
-  syncRevision++;
   seedFromPlayer();
   void syncPlaybackPosition();
 }
@@ -133,6 +102,7 @@ export function initPlaybackClock(): void {
   Spicetify.Player.addEventListener("onplaypause", resetPlaybackClock);
   Spicetify.Player.addEventListener("onprogress", () => {
     const rawPosition = (Spicetify.Player.getProgress?.() ?? 0) / 1000;
+    if (!Number.isFinite(rawPosition)) return;
     const now = performance.now();
     const elapsed = Spicetify.Player.isPlaying() ? Math.max(0, (now - syncedAt) / 1000) : 0;
     const extrapolatedPosition = syncedPosition + elapsed;
@@ -140,7 +110,6 @@ export function initPlaybackClock(): void {
     if (Math.abs(rawPosition - extrapolatedPosition) <= SEEK_SNAP_THRESHOLD_S) return;
 
     incrementPerformanceCounter("playbackClock.seekSnaps");
-    syncRevision++;
     durationSeconds = readDuration();
     syncedPosition = clampToTrack(rawPosition);
     syncedAt = now;

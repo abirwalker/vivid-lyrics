@@ -700,16 +700,21 @@ export default class LyricsRenderer {
       const startsWord = (list: any[], index: number): boolean => {
         if (index === 0) return true;
         if (showRomanized) {
-          return !!(
+          const previousText = list[index - 1].RomanizedText ?? list[index - 1].romanizedText ?? list[index - 1].Text ?? "";
+          const currentText = list[index].RomanizedText ?? list[index].romanizedText ?? list[index].Text ?? "";
+          if (/\s$/.test(previousText) || /^\s/.test(currentText)) return true;
+          // API romanization may omit the tokenizer-specific boundary flags.
+          return (
             list[index].RomanizedStartsWord ??
-            list[index].romanizedStartsWord
+            list[index].romanizedStartsWord ??
+            !list[index - 1].IsPartOfWord
           );
         }
         return !list[index - 1].IsPartOfWord;
       };
       const displayText = (s: any): string =>
         showRomanized
-          ? (s.RomanizedText ?? s.romanizedText ?? s.Text ?? "")
+          ? (s.RomanizedText ?? s.romanizedText ?? s.Text ?? "").trim().replace(/\s+/g, " ")
           : (s.Text ?? "");
 
       if (isSyllableType) {
