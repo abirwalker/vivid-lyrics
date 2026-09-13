@@ -113,6 +113,7 @@ type LineInfo = {
   backgroundWobbleState: WobbleLineState | null;
   backgroundWobbleChars: WobbleCharEl[] | null;
   backgroundWobbleWords: WobbleWord[] | null;
+  backgroundWobbleText: string | null;
   isSyllableType: boolean;
   glowSpring: Spring | null;
   dots?: DotInfo[];
@@ -153,6 +154,7 @@ type LineInfo = {
   wobbleChars: WobbleCharEl[] | null;
   /** Wobble-mode: words reconstructed from syllable groups for the wobble engine */
   wobbleWords: WobbleWord[] | null;
+  wobbleText: string | null;
 };
 
 /** Per-frame settings + spline snapshot — read once, passed everywhere */
@@ -272,6 +274,7 @@ export default class LyricsRenderer {
   private lastBlurActiveStart = -1;
   private lastBlurActiveEnd = -1;
   private cachedContainerHeight = 0;
+  private cachedContainerWidth = 0;
   private cachedMaxScroll = 0;
   // Kept current by scroll events and programmatic writes. A live read in the
   // animation loop can synchronously flush Spotify's shared document layout.
@@ -412,6 +415,7 @@ export default class LyricsRenderer {
     if (typeof ResizeObserver !== "undefined") {
       this.resizeObserver = new ResizeObserver(() => {
         this.invalidateAllWobbleRowCaches();
+        this.cachedContainerWidth = this.scrollContainer.clientWidth;
         if (this.simpleBar) {
           const scrollEl = this.simpleBar.getScrollElement();
           this.cachedContainerHeight = scrollEl.clientHeight;
@@ -647,6 +651,7 @@ export default class LyricsRenderer {
           backgroundWobbleState: null,
           backgroundWobbleChars: null,
           backgroundWobbleWords: null,
+          backgroundWobbleText: null,
           isSyllableType: false,
           glowSpring: null,
           dots,
@@ -672,6 +677,7 @@ export default class LyricsRenderer {
           wobbleState: null,
           wobbleChars: null,
           wobbleWords: null,
+          wobbleText: null,
         });
         continue;
       }
@@ -1144,6 +1150,7 @@ export default class LyricsRenderer {
         backgroundWobbleState,
         backgroundWobbleChars: backgroundText ? backgroundWobbleChars : null,
         backgroundWobbleWords: backgroundText ? backgroundWobbleWords : null,
+        backgroundWobbleText: backgroundText && backgroundWobbleWords.length ? backgroundWobbleWords.map((w) => w.text).join("") : null,
         isSyllableType,
         glowSpring: isSyllableType
           ? null
@@ -1170,6 +1177,7 @@ export default class LyricsRenderer {
         wobbleState,
         wobbleChars,
         wobbleWords,
+        wobbleText: wobbleWords ? wobbleWords.map((w) => w.text).join("") : null,
       });
     }
   }
@@ -1178,6 +1186,7 @@ export default class LyricsRenderer {
   private cacheLayoutPositions(): void {
     const scrollEl = this.simpleBar!.getScrollElement();
     this.cachedContainerHeight = scrollEl.clientHeight;
+    this.cachedContainerWidth = this.scrollContainer.clientWidth;
 
     // Interlude rows collapse to zero while inactive and expand when their dots
     // become Active. Measure the base list with every interlude collapsed, then
@@ -2263,10 +2272,7 @@ export default class LyricsRenderer {
     // Do not keep their springs alive when the complete line is far outside the
     // visible scroll window. If it becomes visible later, the timestamp-derived
     // state below restores the correct frame immediately.
-    if (
-      ctx.animationStyle === "spicy-bounce" &&
-      !this.isLineNearViewport(line)
-    ) {
+    if (!this.isLineNearViewport(line)) {
       return;
     }
 
@@ -2350,7 +2356,7 @@ export default class LyricsRenderer {
     ) {
       ensurePrecompute(
         line.backgroundWobbleState,
-        line.backgroundWobbleWords.map((word) => word.text).join(""),
+        line.backgroundWobbleText ?? "",
         line.backgroundWobbleWords,
       );
       updateSmoothPosition(
@@ -2366,7 +2372,7 @@ export default class LyricsRenderer {
         performance.now(),
         ctx.glowIntensity,
         line.duration * 1000,
-        this.scrollContainer.clientWidth,
+        this.cachedContainerWidth || (this.cachedContainerWidth = this.scrollContainer.clientWidth),
       );
     }
   }
@@ -2466,7 +2472,7 @@ export default class LyricsRenderer {
     if (ctx.animationStyle === "wobble" && line.wobbleChars && line.wobbleState && line.wobbleWords) {
       ensurePrecompute(
         line.wobbleState,
-        line.wobbleWords.map((w) => w.text).join(""),
+        line.wobbleText ?? "",
         line.wobbleWords,
       );
       updateSmoothPosition(
@@ -2482,7 +2488,7 @@ export default class LyricsRenderer {
         performance.now(),
         ctx.glowIntensity,
         line.duration * 1000,
-        this.scrollContainer.clientWidth,
+        this.cachedContainerWidth || (this.cachedContainerWidth = this.scrollContainer.clientWidth),
       );
       return;
     }
