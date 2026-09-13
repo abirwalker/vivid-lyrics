@@ -1,4 +1,4 @@
-import { get } from "../stores/settings";
+import { get, onSettingsChange } from "../stores/settings";
 import { getActiveSplines, type SpicySpringConfig } from "./spicy-spring";
 import { getSmoothProgress } from "./playback-clock";
 import {
@@ -96,6 +96,54 @@ class RenderLoopCoordinator {
   private running = false;
   private profiledLabels = new Set<string>();
 
+  private cachedCtx: FrameCtx = {
+    animationStyle: "spicy-bounce",
+    glowIntensity: 1,
+    blurEnabled: true,
+    blurStrengthMul: 1,
+    splines: getActiveSplines(),
+  };
+
+  private cachedSpringConfig: SpicySpringConfig = {
+    enabled: true,
+  };
+
+  private frame: SharedFrame = {
+    currentTimestamp: 0,
+    deltaTime: 0,
+    isPlaying: false,
+    springConfig: this.cachedSpringConfig,
+    ctx: this.cachedCtx,
+  };
+
+  constructor() {
+    this.refreshSettings();
+    onSettingsChange((change) => {
+      if (
+        !change.key ||
+        change.key === "animationStyle" ||
+        change.key === "glowIntensity" ||
+        change.key === "blurEnabled" ||
+        change.key === "blurStrength" ||
+        change.key === "springMode"
+      ) {
+        this.refreshSettings();
+      }
+    });
+  }
+
+  private refreshSettings(): void {
+    const blurStrength = get("blurStrength");
+    const animationStyle = get("animationStyle");
+    this.cachedCtx.animationStyle = animationStyle;
+    this.cachedCtx.glowIntensity = get("glowIntensity");
+    this.cachedCtx.blurEnabled = get("blurEnabled");
+    this.cachedCtx.blurStrengthMul =
+      blurStrength === "light" ? 0.5 : blurStrength === "heavy" ? 1.5 : 1;
+    this.cachedCtx.splines = getActiveSplines();
+    this.cachedSpringConfig.enabled = animationStyle === "spicy-bounce";
+  }
+
   register(listener: FrameListener, label = "unknown"): () => void {
     const id = Symbol("frame-listener");
     this.listeners.set(id, { label, listener });
@@ -139,23 +187,13 @@ class RenderLoopCoordinator {
     const setupStartedAt = loopStartedAt;
     if (profiling) recordPerformanceFrame(now);
 
-    const blurStrength = get("blurStrength");
-    const animationStyle = get("animationStyle");
     const isPlaying = Spicetify.Player.isPlaying();
     const currentTimestamp = getSmoothProgress(isPlaying);
-    const frame: SharedFrame = {
-      currentTimestamp,
-      deltaTime,
-      isPlaying,
-      springConfig: { enabled: animationStyle === "spicy-bounce" },
-      ctx: {
-        animationStyle,
-        glowIntensity: get("glowIntensity"),
-        blurEnabled: get("blurEnabled"),
-        blurStrengthMul: blurStrength === "light" ? 0.5 : blurStrength === "heavy" ? 1.5 : 1,
-        splines: getActiveSplines(),
-      },
-    };
+
+    this.frame.currentTimestamp = currentTimestamp;
+    this.frame.deltaTime = deltaTime;
+    this.frame.isPlaying = isPlaying;
+
     if (profiling) {
       recordPerformanceDuration("renderLoop.setup", performance.now() - setupStartedAt);
     }
@@ -164,7 +202,7 @@ class RenderLoopCoordinator {
     const labelCounts = profiling ? new Map<string, number>() : null;
     for (const { label, listener } of this.listeners.values()) {
       const listenerStartedAt = profiling ? performance.now() : 0;
-      const active = listener(frame);
+      const active = listener(this.frame);
       if (profiling) {
         recordPerformanceDuration(`renderer.${label}`, performance.now() - listenerStartedAt);
         labelCounts!.set(label, (labelCounts!.get(label) ?? 0) + 1);

@@ -3,7 +3,7 @@
  * Supports Legacy and Current spring modes
  */
 
-import { get } from "../stores/settings";
+import { get, onSettingsChange } from "../stores/settings";
 import { setCachedInline, setCachedGlow } from "./style-cache";
 
 // --- Cubic Spline (from cubic-spline npm) ---
@@ -341,12 +341,22 @@ const CurrentSpring = {
 // ============================================================
 // ACTIVE MODE ACCESSOR
 // ============================================================
+let cachedSplines = get("springMode") === "current" ? CurrentSplines : LegacySplines;
+let cachedSpringConfig = get("springMode") === "current" ? CurrentSpring : LegacySpring;
+
+onSettingsChange((change) => {
+  if (!change.key || change.key === "springMode") {
+    cachedSplines = get("springMode") === "current" ? CurrentSplines : LegacySplines;
+    cachedSpringConfig = get("springMode") === "current" ? CurrentSpring : LegacySpring;
+  }
+});
+
 export function getActiveSplines() {
-  return get("springMode") === "current" ? CurrentSplines : LegacySplines;
+  return cachedSplines;
 }
 
 function getActiveSpringConfig() {
-  return get("springMode") === "current" ? CurrentSpring : LegacySpring;
+  return cachedSpringConfig;
 }
 
 // --- Public Types ---
