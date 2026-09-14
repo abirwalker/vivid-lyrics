@@ -4,7 +4,7 @@
  */
 
 import { get, onSettingsChange } from "../stores/settings";
-import { setCachedInline, setCachedGlow } from "./style-cache";
+import { setCachedScale, setCachedTransformY, setCachedGlow } from "./style-cache";
 
 // --- Cubic Spline (from cubic-spline npm) ---
 class Spline {
@@ -172,6 +172,10 @@ class Spring {
   }
 
   Step(dt: number): number {
+    if (this.Position === this.Goal && this.Velocity === 0) {
+      return this.Position;
+    }
+
     const d = this.DampingRatio;
     const f = this.Frequency * TAU;
     const goal = this.Goal;
@@ -224,6 +228,14 @@ class Spring {
       const co2ec2 = co2 * ec2;
       this.Position = co1 + co2ec2 + goal;
       this.Velocity = co1 * r1 + co2ec2 * r2;
+    }
+
+    if (
+      this.Velocity ** 2 <= SLEEP_VELOCITY_SQ_LIMIT &&
+      (this.Goal - this.Position) ** 2 <= SLEEP_OFFSET_SQ_LIMIT
+    ) {
+      this.Position = this.Goal;
+      this.Velocity = 0;
     }
 
     return this.Position;
@@ -430,8 +442,8 @@ export function applySpringStyles(
   values: { scale: number; yOffset: number; glow: number },
   glowIntensity = 1,
 ): void {
-  setCachedInline(el, "scale", `${values.scale}`);
-  setCachedInline(el, "transform", `translate3d(0, calc(var(--vl-default-font-size) * ${values.yOffset}), 0)`);
+  setCachedScale(el, values.scale);
+  setCachedTransformY(el, values.yOffset);
   setCachedGlow(
     el,
     4 + 2 * values.glow * glowIntensity,

@@ -1,4 +1,4 @@
-import { setCachedStyle, setCachedInline, setCachedGlow } from "./style-cache";
+import { setCachedStyle, setCachedInline, setCachedGlow, setCachedScale } from "./style-cache";
 import { makeSpline } from "./spicy-spring";
 
 const WOBBLE_WORDS_AHEAD = 1;
@@ -60,6 +60,7 @@ interface WobbleScratch {
   isWordSung: Uint8Array;
   origWobble: Float64Array;
   wordWobble: Float64Array;
+  lineCurrentPush: Float64Array;
 }
 
 interface RowCache {
@@ -174,15 +175,14 @@ function ensureRowCache(
 
 export function updateSmoothPosition(
   state: WobbleLineState,
-  getPlayerPosMs: () => number,
+  playerPosMs: number,
   isPlaying: boolean,
   lyricsOffsetMs: number,
 ): void {
   const now = performance.now();
-  const playerPos = getPlayerPosMs();
 
-  if (playerPos !== state.lastPlayerPos) {
-    state.lastPlayerPos = playerPos;
+  if (playerPosMs !== state.lastPlayerPos) {
+    state.lastPlayerPos = playerPosMs;
     state.lastUpdateTime = now;
   }
 
@@ -346,12 +346,14 @@ function ensureWobbleScratch(
   state: WobbleLineState,
   effectiveWordCount: number,
   originalWordCount: number,
+  rowCount: number,
 ): WobbleScratch {
   const existing = state.scratch;
   if (
     existing &&
     existing.sungFactor.length === effectiveWordCount &&
-    existing.origWobble.length === originalWordCount
+    existing.origWobble.length === originalWordCount &&
+    existing.lineCurrentPush.length >= rowCount
   ) {
     return existing;
   }
@@ -360,6 +362,7 @@ function ensureWobbleScratch(
     isWordSung: new Uint8Array(effectiveWordCount),
     origWobble: new Float64Array(originalWordCount),
     wordWobble: new Float64Array(effectiveWordCount),
+    lineCurrentPush: new Float64Array(Math.max(4, rowCount)),
   };
   state.scratch = scratch;
   return scratch;
@@ -476,10 +479,10 @@ function computeCrescendo(
 function computeGlow(
   wordItem: EffectiveWord,
   sungFactor: number,
-): { alpha: number } | null {
+): number {
   const v = glowSpline.at(clamp(sungFactor, 0, 1));
-  if (v <= 0.01) return null;
-  return { alpha: v * 0.15 };
+  if (v <= 0.01) return 0;
+  return v * 0.15;
 }
 
 // Sustained emphasis: a smooth size bump that follows the word's sung
@@ -542,10 +545,15 @@ export function animateWobbleLine(
     originalWordCount,
   } = pc;
 
+  // Row assignment + cached widths (still used for indexing the per-row push
+  // arrays below and avoiding repeated offsetWidth reads).
+  const { rowOf, rowCount, charWidths } = ensureRowCache(state, chars, containerWidth);
+
   const scratch = ensureWobbleScratch(
     state,
     effectiveWords.length,
     originalWordCount,
+    rowCount,
   );
   fillWordFactors(effectiveWords, smoothPosition, scratch.sungFactor, scratch.isWordSung);
   fillWordWobbles(
@@ -556,9 +564,6 @@ export function animateWobbleLine(
     scratch.wordWobble,
   );
 
-  // Row assignment + cached widths (still used for indexing the per-row push
-  // arrays below and avoiding repeated offsetWidth reads).
-  const { rowOf, rowCount, charWidths } = ensureRowCache(state, chars, containerWidth);
   // Find which effective word is actually being sung right now, and which
   // visual row it occupies. The wobble window extends forward only to words
   // that sit on that same visual row — no fixed word count. This prevents
@@ -604,8 +609,8 @@ export function animateWobbleLine(
     }
   }
 
-
-  const lineCurrentPush = new Float64Array(rowCount);
+  const lineCurrentPush = scratch.lineCurrentPush;
+  lineCurrentPush.fill(0, 0, rowCount);
 
   for (let i = 0; i < chars.length; i++) {
     const ci = chars[i].charIndex;
@@ -702,8 +707,6 @@ export function animateWobbleLine(
       smoothPosition,
     );
     const scaleX = 1 + wobble * 0.0375 * emphMul + crescendoX + nudge * 0.3 + emphOffset;
-    const scaleY = 1;
-    const waveY = 0;
 
     const charWidth = charWidths[i];
     const tx = lineCurrentPush[row];
@@ -713,24 +716,23 @@ export function animateWobbleLine(
 
     let glowAlpha = 0;
     if (wordItem && !isWordSung && sungFactor > 0.001) {
-      const glow = computeGlow(wordItem, sungFactor);
-      if (glow) {
-        glowAlpha = glow.alpha;
-      }
+      glowAlpha = computeGlow(wordItem, sungFactor);
     }
 
     const el = chars[i].span;
-    setCachedInline(el, "scale", `${scaleX}`);
-    setCachedInline(
-      el,
-      "transform",
-      `translate3d(${tx.toFixed(2)}px, ${waveY.toFixed(2)}px, 0) scaleY(${scaleY.toFixed(4)})`,
-    );
-    setCachedStyle(
-      el,
-      "--char-progress",
-      `${pct.toFixed(1)}%`,
-    );
+    setCachedScale(el, scaleX);
+    if (tx !== 0) {
+      setCachedInline(el, "transform", `translate3d(${tx.toFixed(2)}px, 0, 0)`);
+    } else {
+      setCachedInline(el, "transform", "");
+    }
+    const pctStr =
+      charLp <= 0
+        ? "-20%"
+        : charLp >= 1
+          ? "120%"
+          : `${pct.toFixed(1)}%`;
+    setCachedStyle(el, "--char-progress", pctStr);
     setCachedGlow(
       el,
       4 + 12 * glowAlpha * glowIntensity,

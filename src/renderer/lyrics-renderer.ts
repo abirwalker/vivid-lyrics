@@ -5,13 +5,16 @@ import {
   setCachedStyle,
   setCachedInline,
   setCachedGlow,
+  setCachedScale,
+  setCachedTransformY,
+  setCachedOpacity,
   clearCachedStyle,
 } from "./style-cache";
 import SimpleBar from "simplebar";
 import "simplebar/dist/simplebar.css";
 import { SyncIcon } from "../components/shared/svg-icons";
 import { SmoothLyricsScroller } from "./smooth-scroller";
-import { renderLoop, type SharedFrame } from "./render-loop";
+import { renderLoop, type SharedFrame, type FrameCtx } from "./render-loop";
 import {
   incrementPerformanceCounter,
   isPerformanceLoggingEnabled,
@@ -48,6 +51,11 @@ import {
   type WobbleCharEl,
   type WobbleWord,
 } from "./wobble";
+
+const PROGRESS_NOT_SUNG = "-20%";
+const PROGRESS_SUNG = "120%";
+const scratchSpringValues = { scale: 0, yOffset: 0, glow: 0 };
+const scratchDotSpringValues = { scale: 0, yOffset: 0, glow: 0, opacity: 0 };
 
 const EMPHASIS_LONGER_THAN_MS = 1500;
 const INTERLUDE_GAP_THRESHOLD_S = 3;
@@ -157,14 +165,6 @@ type LineInfo = {
   wobbleText: string | null;
 };
 
-/** Per-frame settings + spline snapshot — read once, passed everywhere */
-type FrameCtx = {
-  animationStyle: "spicy-bounce" | "wobble";
-  glowIntensity: number;
-  blurEnabled: boolean;
-  blurStrengthMul: number;
-  splines: ReturnType<typeof getActiveSplines>;
-};
 
 function clamp(v: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, v));
@@ -260,7 +260,11 @@ export default class LyricsRenderer {
   private unregisterFrame: (() => void) | null = null;
   private lastTimestamp = -1;
   private lastPausedTimestamp = -1;
-  private lastPausedVisualKey: string | null = null;
+  private lastPausedAnimStyle: FrameCtx["animationStyle"] | null = null;
+  private lastPausedGlowIntensity = -1;
+  private lastPausedBlurEnabled: boolean | null = null;
+  private lastPausedBlurStrengthMul = -1;
+  private lastPausedIsCurrentSpring: boolean | null = null;
   private lastAnimationStyle: FrameCtx["animationStyle"] | null = null;
   private destroyed = false;
   private lyricsEnded = false;
@@ -270,9 +274,11 @@ export default class LyricsRenderer {
   private pendingSeekTimestamp: number | null = null;
   private pendingSeekDeadline = 0;
   private lastBlurCleared = false;
-  private lastBlurRenderKey: string | null = null;
   private lastBlurActiveStart = -1;
   private lastBlurActiveEnd = -1;
+  private lastBlurReset = false;
+  private lastBlurStrengthMul = -1;
+  private activeLinesDirty = true;
   private cachedContainerHeight = 0;
   private cachedContainerWidth = 0;
   private cachedMaxScroll = 0;
@@ -1747,26 +1753,29 @@ export default class LyricsRenderer {
     // virtualization, and scrolling on every display frame. Settings that
     // affect the frozen visual produce a new key and are still applied once.
     if (!isPlaying) {
-      const pausedVisualKey = [
-        frame.ctx.animationStyle,
-        frame.ctx.glowIntensity,
-        frame.ctx.blurEnabled,
-        frame.ctx.blurStrengthMul,
-        get("springMode"),
-      ].join(":");
       const timestampUnchanged =
         this.lastPausedTimestamp >= 0 &&
         Math.abs(currentTimestamp - this.lastPausedTimestamp) < 0.02;
+      const settingsUnchanged =
+        frame.ctx.animationStyle === this.lastPausedAnimStyle &&
+        frame.ctx.glowIntensity === this.lastPausedGlowIntensity &&
+        frame.ctx.blurEnabled === this.lastPausedBlurEnabled &&
+        frame.ctx.blurStrengthMul === this.lastPausedBlurStrengthMul &&
+        frame.ctx.isCurrentSpring === this.lastPausedIsCurrentSpring;
 
-      if (timestampUnchanged && pausedVisualKey === this.lastPausedVisualKey) {
+      if (timestampUnchanged && settingsUnchanged) {
         return;
       }
 
       this.lastPausedTimestamp = currentTimestamp;
-      this.lastPausedVisualKey = pausedVisualKey;
+      this.lastPausedAnimStyle = frame.ctx.animationStyle;
+      this.lastPausedGlowIntensity = frame.ctx.glowIntensity;
+      this.lastPausedBlurEnabled = frame.ctx.blurEnabled;
+      this.lastPausedBlurStrengthMul = frame.ctx.blurStrengthMul;
+      this.lastPausedIsCurrentSpring = frame.ctx.isCurrentSpring;
     } else {
       this.lastPausedTimestamp = -1;
-      this.lastPausedVisualKey = null;
+      this.lastPausedAnimStyle = null;
     }
 
     // If the loop was stopped because the song ended and now playback
@@ -1821,6 +1830,7 @@ export default class LyricsRenderer {
       // The clicked target may remain in the same line as the old position;
       // force one fresh target calculation after the seek nevertheless.
       this.lastActiveIdx = -1;
+      this.activeLinesDirty = true;
       this.scrollToActive();
     }
 
@@ -2152,23 +2162,17 @@ export default class LyricsRenderer {
     ctx: FrameCtx,
   ): void {
     if (line.isSyllableType && line.syllables.length > 0) {
-      const sylScratch = { scale: 0, yOffset: 0, glow: 0 };
-      const ltrScratch = { scale: 0, yOffset: 0, glow: 0 };
       for (const syl of line.syllables) {
         if (springConfig.enabled && syl.springs) {
-          const values = stepSprings(syl.springs, deltaTime, sylScratch);
+          const values = stepSprings(syl.springs, deltaTime, scratchSpringValues);
           applySpringStyles(syl.span, values, ctx.glowIntensity);
         }
         for (const ltr of syl.letters) {
           if (springConfig.enabled && ltr.springs) {
-            const values = stepSprings(ltr.springs, deltaTime, ltrScratch);
+            const values = stepSprings(ltr.springs, deltaTime, scratchSpringValues);
             const gi = ctx.glowIntensity;
-            setCachedInline(ltr.span, "scale", `${values.scale}`);
-            setCachedInline(
-              ltr.span,
-              "transform",
-              `translate3d(0, calc(var(--vl-default-font-size) * ${values.yOffset * 2}), 0)`,
-            );
+            setCachedScale(ltr.span, values.scale);
+            setCachedTransformY(ltr.span, values.yOffset * 2);
             setCachedGlow(
               ltr.span,
               4 + 12 * values.glow * gi,
@@ -2179,16 +2183,11 @@ export default class LyricsRenderer {
       }
     } else if (!line.isSyllableType && line.syllables.length === 0) {
       if (line.dots && line.dots.length > 0 && (springConfig.enabled || ctx.animationStyle === "wobble")) {
-        const dotScratch = { scale: 0, yOffset: 0, glow: 0, opacity: 0 };
         for (const dot of line.dots) {
-          const v = stepDotSprings(dot.springs, deltaTime, dotScratch);
-          setCachedInline(dot.span, "scale", `${v.scale}`);
-          setCachedInline(
-            dot.span,
-            "transform",
-            `translate3d(0, calc(var(--vl-default-font-size) * ${v.yOffset}), 0)`,
-          );
-          setCachedInline(dot.span, "opacity", `${v.opacity}`);
+          const v = stepDotSprings(dot.springs, deltaTime, scratchDotSpringValues);
+          setCachedScale(dot.span, v.scale);
+          setCachedTransformY(dot.span, v.yOffset);
+          setCachedOpacity(dot.span, v.opacity);
           setCachedGlow(dot.span, 4 + 6 * v.glow, v.glow * 90);
         }
       }
@@ -2361,7 +2360,7 @@ export default class LyricsRenderer {
       );
       updateSmoothPosition(
         line.backgroundWobbleState,
-        () => songTimestamp * 1000,
+        songTimestamp * 1000,
         isPlaying,
         0,
       );
@@ -2408,6 +2407,7 @@ export default class LyricsRenderer {
     const stateChanged = stateNow !== line.state;
 
     if (stateChanged) {
+      this.activeLinesDirty = true;
       line.state = stateNow;
       line.settled = false;
       this.evaluateClass(line);
@@ -2477,7 +2477,7 @@ export default class LyricsRenderer {
       );
       updateSmoothPosition(
         line.wobbleState,
-        () => songTimestamp * 1000,
+        songTimestamp * 1000,
         isPlaying,
         0,
       );
@@ -2495,8 +2495,6 @@ export default class LyricsRenderer {
 
     // ── Spicy Bounce mode: spring-based animation ──
     if (line.isSyllableType && line.syllables.length > 0 && line.duration > 0) {
-      const activeScratch = { scale: 0, yOffset: 0, glow: 0 };
-
       for (const syl of line.syllables) {
         const sylDuration = syl.endScale - syl.startScale || 0.01;
         const sylProgress = clamp(
@@ -2505,8 +2503,13 @@ export default class LyricsRenderer {
           1,
         );
 
-        const pct = -20 + sylProgress * 140;
-        setCachedStyle(syl.span, "--char-progress", `${pct}%`);
+        const sylPctStr =
+          sylProgress <= 0
+            ? PROGRESS_NOT_SUNG
+            : sylProgress >= 1
+              ? PROGRESS_SUNG
+              : `${-20 + sylProgress * 140}%`;
+        setCachedStyle(syl.span, "--char-progress", sylPctStr);
 
         // O(n) active letter scan — hoisted out of per-letter loop
         let activeLetterIndex = -1;
@@ -2526,6 +2529,28 @@ export default class LyricsRenderer {
           }
         }
 
+        const sylDurationMs =
+          (syl.endScale - syl.startScale) * line.duration * 1000;
+        const stretchMultiplier =
+          sylDurationMs > EMPHASIS_LONGER_THAN_MS ? 1.103 : 1.09;
+
+        const restingScale = ctx.splines.Scale.at(0);
+        const restingYOffset = ctx.splines.YOffset.at(0);
+        const restingGlow = ctx.splines.Glow.at(0);
+        const sungScale = ctx.splines.Scale.at(1);
+        const sungYOffset = ctx.splines.YOffset.at(1);
+        const sungGlow = ctx.splines.Glow.at(1);
+
+        let baseScale = 0;
+        let baseYOffset = 0;
+        let baseGlow = 0;
+        if (activeLetterIndex >= 0) {
+          baseScale =
+            ctx.splines.Scale.at(activeLetterPercentage) * stretchMultiplier;
+          baseYOffset = ctx.splines.YOffset.at(activeLetterPercentage);
+          baseGlow = ctx.splines.Glow.at(activeLetterPercentage);
+        }
+
         for (let li = 0; li < syl.letters.length; li++) {
           const ltr = syl.letters[li];
           const ltrDuration = ltr.endScale - ltr.startScale || 0.01;
@@ -2535,15 +2560,15 @@ export default class LyricsRenderer {
             1,
           );
 
-          const ltrPct = -20 + ltrProgress * 140;
-          setCachedStyle(ltr.span, "--char-progress", `${ltrPct}%`);
+          const ltrPctStr =
+            ltrProgress <= 0
+              ? PROGRESS_NOT_SUNG
+              : ltrProgress >= 1
+                ? PROGRESS_SUNG
+                : `${-20 + ltrProgress * 140}%`;
+          setCachedStyle(ltr.span, "--char-progress", ltrPctStr);
 
           if (springConfig.enabled && ltr.springs) {
-            const sylDurationMs =
-              (syl.endScale - syl.startScale) * line.duration * 1000;
-            const stretchMultiplier =
-              sylDurationMs > EMPHASIS_LONGER_THAN_MS ? 1.103 : 1.09;
-
             const ltrState =
               ltrProgress > 0 && ltrProgress < 1
                 ? "Active"
@@ -2551,25 +2576,13 @@ export default class LyricsRenderer {
                   ? "Sung"
                   : "NotSung";
 
-            let targetScale = ctx.splines.Scale.at(0);
-            let targetYOffset = ctx.splines.YOffset.at(0);
-            let targetGlow = ctx.splines.Glow.at(0);
+            let targetScale = restingScale;
+            let targetYOffset = restingYOffset;
+            let targetGlow = restingGlow;
 
             if (activeLetterIndex >= 0) {
-              const baseScale =
-                ctx.splines.Scale.at(activeLetterPercentage) *
-                stretchMultiplier;
-              const baseYOffset = ctx.splines.YOffset.at(
-                activeLetterPercentage,
-              );
-              const baseGlow = ctx.splines.Glow.at(activeLetterPercentage);
-
-              const restingScale = ctx.splines.Scale.at(0);
-              const restingYOffset = ctx.splines.YOffset.at(0);
-              const restingGlow = ctx.splines.Glow.at(0);
-
               const distance = Math.abs(li - activeLetterIndex);
-              const isCurrent = get("springMode") === "current";
+              const isCurrent = ctx.isCurrentSpring;
               const falloff = Math.max(
                 0,
                 1 /
@@ -2583,13 +2596,13 @@ export default class LyricsRenderer {
               targetGlow = restingGlow + (baseGlow - restingGlow) * glowFalloff;
             } else {
               if (ltrState === "NotSung") {
-                targetScale = ctx.splines.Scale.at(0);
-                targetYOffset = ctx.splines.YOffset.at(0);
-                targetGlow = ctx.splines.Glow.at(0);
+                targetScale = restingScale;
+                targetYOffset = restingYOffset;
+                targetGlow = restingGlow;
               } else if (ltrState === "Sung") {
-                targetScale = ctx.splines.Scale.at(1);
-                targetYOffset = ctx.splines.YOffset.at(1);
-                targetGlow = ctx.splines.Glow.at(1);
+                targetScale = sungScale;
+                targetYOffset = sungYOffset;
+                targetGlow = sungGlow;
               } else {
                 targetScale = ctx.splines.Scale.at(ltrProgress);
                 targetYOffset = ctx.splines.YOffset.at(ltrProgress);
@@ -2609,14 +2622,10 @@ export default class LyricsRenderer {
             const ltrTimeScale =
               ltrState === "Active" ? springTimeScale(ltrDurationS) : 1;
             const ltrDt = deltaTime * ltrTimeScale;
-            const values = stepSprings(ltr.springs, ltrDt, activeScratch);
+            const values = stepSprings(ltr.springs, ltrDt, scratchSpringValues);
             const gi = ctx.glowIntensity;
-            setCachedInline(ltr.span, "scale", `${values.scale}`);
-            setCachedInline(
-              ltr.span,
-              "transform",
-              `translate3d(0, calc(var(--vl-default-font-size) * ${values.yOffset * 2}), 0)`,
-            );
+            setCachedScale(ltr.span, values.scale);
+            setCachedTransformY(ltr.span, values.yOffset * 2);
             setCachedGlow(
               ltr.span,
               4 + 12 * values.glow * gi,
@@ -2641,13 +2650,12 @@ export default class LyricsRenderer {
           const sylTimeScale =
             sylState === "Active" ? springTimeScale(sylDurationS) : 1;
           const sylDt = deltaTime * sylTimeScale;
-          const values = stepSprings(syl.springs, sylDt, activeScratch);
+          const values = stepSprings(syl.springs, sylDt, scratchSpringValues);
           applySpringStyles(syl.span, values, ctx.glowIntensity);
         }
       }
     } else if (!line.isSyllableType && line.syllables.length === 0) {
       if (line.dots && line.dots.length > 0 && (springConfig.enabled || ctx.animationStyle === "wobble")) {
-        const activeDotScratch = { scale: 0, yOffset: 0, glow: 0, opacity: 0 };
         for (const dot of line.dots) {
           const dotRelTime = songTimestamp - dot.startTime;
           const dotProgress =
@@ -2661,14 +2669,10 @@ export default class LyricsRenderer {
                 ? "Sung"
                 : "NotSung";
           setDotSpringGoals(dot.springs, dotProgress, dotState, replacePos);
-          const v = stepDotSprings(dot.springs, deltaTime, activeDotScratch);
-          setCachedInline(dot.span, "scale", `${v.scale}`);
-          setCachedInline(
-            dot.span,
-            "transform",
-            `translate3d(0, calc(var(--vl-default-font-size) * ${v.yOffset}), 0)`,
-          );
-          setCachedInline(dot.span, "opacity", `${v.opacity}`);
+          const v = stepDotSprings(dot.springs, deltaTime, scratchDotSpringValues);
+          setCachedScale(dot.span, v.scale);
+          setCachedTransformY(dot.span, v.yOffset);
+          setCachedOpacity(dot.span, v.opacity);
           setCachedGlow(dot.span, 4 + 6 * v.glow, v.glow * 90);
         }
       }
@@ -2726,11 +2730,30 @@ export default class LyricsRenderer {
     if (!ctx?.blurEnabled) {
       if (this.lastBlurCleared) return;
       this.lastBlurCleared = true;
-      this.lastBlurRenderKey = null;
+      this.lastBlurActiveStart = -1;
+      this.lastBlurActiveEnd = -1;
+      this.lastBlurReset = false;
+      this.lastBlurStrengthMul = -1;
       for (const line of this.lines) clearLineBlur(line);
       return;
     }
     this.lastBlurCleared = false;
+
+    const reset = this.autoScrollBlocked;
+    const strengthMul = ctx.blurStrengthMul;
+
+    // Line states and blur settings change far less often than animation
+    // frames. Do no DOM work or line-scanning while the desired blur field is unchanged.
+    if (
+      !this.activeLinesDirty &&
+      reset === this.lastBlurReset &&
+      strengthMul === this.lastBlurStrengthMul
+    ) {
+      return;
+    }
+    this.activeLinesDirty = false;
+    this.lastBlurReset = reset;
+    this.lastBlurStrengthMul = strengthMul;
 
     let activeStart = -1;
     let activeEnd = -1;
@@ -2750,16 +2773,7 @@ export default class LyricsRenderer {
       activeEnd = this.lastBlurActiveEnd;
     }
 
-    const reset = this.autoScrollBlocked;
-    const strengthMul = ctx.blurStrengthMul;
     const BLUR_RANGE = 20;
-
-    // Line states and blur settings change far less often than animation
-    // frames. Do no DOM work while the desired blur field is unchanged.
-    const renderKey = `${activeStart}:${activeEnd}:${reset ? 1 : 0}:${strengthMul}`;
-    if (renderKey === this.lastBlurRenderKey) return;
-    this.lastBlurRenderKey = renderKey;
-
     const blurStart = Math.max(0, (activeStart >= 0 ? activeStart : 0) - BLUR_RANGE);
     const blurEnd = Math.min(this.lines.length, (activeEnd >= 0 ? activeEnd : 0) + BLUR_RANGE + 1);
 

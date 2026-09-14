@@ -15,6 +15,7 @@ export interface FrameCtx {
   blurEnabled: boolean;
   blurStrengthMul: number;
   splines: ReturnType<typeof getActiveSplines>;
+  isCurrentSpring: boolean;
 }
 
 export interface SharedFrame {
@@ -90,6 +91,7 @@ function createAnimationFrameDriver(): AnimationFrameDriver {
 
 class RenderLoopCoordinator {
   private listeners = new Map<symbol, RegisteredListener>();
+  private listenerList: RegisteredListener[] = [];
   private frameDriver: AnimationFrameDriver | null = null;
   private rafId = 0;
   private lastFrameTime = 0;
@@ -102,6 +104,7 @@ class RenderLoopCoordinator {
     blurEnabled: true,
     blurStrengthMul: 1,
     splines: getActiveSplines(),
+    isCurrentSpring: get("springMode") === "current",
   };
 
   private cachedSpringConfig: SpicySpringConfig = {
@@ -141,18 +144,21 @@ class RenderLoopCoordinator {
     this.cachedCtx.blurStrengthMul =
       blurStrength === "light" ? 0.5 : blurStrength === "heavy" ? 1.5 : 1;
     this.cachedCtx.splines = getActiveSplines();
+    this.cachedCtx.isCurrentSpring = get("springMode") === "current";
     this.cachedSpringConfig.enabled = animationStyle === "spicy-bounce";
   }
 
   register(listener: FrameListener, label = "unknown"): () => void {
     const id = Symbol("frame-listener");
     this.listeners.set(id, { label, listener });
+    this.listenerList = Array.from(this.listeners.values());
     this.ensureRunning();
     return () => this.unregister(id);
   }
 
   private unregister(id: symbol): void {
     this.listeners.delete(id);
+    this.listenerList = Array.from(this.listeners.values());
     if (this.listeners.size === 0) this.stop();
   }
 
@@ -200,7 +206,9 @@ class RenderLoopCoordinator {
 
     let anyActive = false;
     const labelCounts = profiling ? new Map<string, number>() : null;
-    for (const { label, listener } of this.listeners.values()) {
+    const list = this.listenerList;
+    for (let i = 0; i < list.length; i++) {
+      const { label, listener } = list[i];
       const listenerStartedAt = profiling ? performance.now() : 0;
       const active = listener(this.frame);
       if (profiling) {
