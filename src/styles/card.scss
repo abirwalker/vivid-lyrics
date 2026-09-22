@@ -132,7 +132,6 @@ aside:has(.VL-FluidMeshBg) {
 
     .VL-CardTitle {
         clip-path: inset(0 calc(var(--close-growth) + var(--expand-growth) + var(--romanize-growth)) 0 0);
-        transition: clip-path 0.25s cubic-bezier(0.4, 0, 0.2, 1);
         flex: 1 1 0%;
         min-width: 0;
         overflow: hidden;
@@ -277,7 +276,7 @@ aside:has(.VL-FluidMeshBg) {
         background-color: transparent !important;
         cursor: pointer;
         outline: none;
-        transition: transform 0.15s ease, background-color 0.2s ease, border-color 0.2s ease, scale 0.15s ease;
+        transition: transform 0.15s ease, background-color 0.2s ease, scale 0.15s ease;
 
         &:hover {
             background-color: rgba(255, 255, 255, 0.12) !important;

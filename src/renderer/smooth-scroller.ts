@@ -13,6 +13,13 @@ interface ScrollerOptions {
 }
 
 const MAX_DT = 1 / 8;
+const SCROLL_SUBPIXEL_STEPS = 8;
+const MIN_BOUNCE_TRAVEL_PX = 12;
+const MIN_BOUNCE_VELOCITY_PX_S = 64;
+
+function quantizeScrollTop(value: number): number {
+  return Math.round(value * SCROLL_SUBPIXEL_STEPS) / SCROLL_SUBPIXEL_STEPS;
+}
 
 export class SmoothLyricsScroller {
   private simpleBar: SimpleBar;
@@ -28,6 +35,8 @@ export class SmoothLyricsScroller {
   private current = 0;
   private target = 0;
   private velocity = 0;
+  private crossedTarget = false;
+  private bounceEnabled = false;
   private initialized = false;
 
   private userScrolling = false;
@@ -68,11 +77,16 @@ export class SmoothLyricsScroller {
       cachedLineCenter - cachedContainerHeight * this.focusRatio,
       cachedMaxScroll,
     );
+    if (target !== this.target) {
+      this.crossedTarget = false;
+      this.bounceEnabled = Math.abs(target - this.current) >= MIN_BOUNCE_TRAVEL_PX;
+    }
     this.target = target;
     if (this.userScrolling) return;
     if (!this.initialized) {
       this.current = this.target;
       this.velocity = 0;
+      this.bounceEnabled = false;
       this.applyScroll(this.current);
       this.initialized = true;
     }
@@ -81,7 +95,9 @@ export class SmoothLyricsScroller {
   syncPosition(pos: number) {
     this.current = pos;
     this.velocity = 0;
-    this.lastAppliedScrollTop = Math.round(pos);
+    this.crossedTarget = false;
+    this.bounceEnabled = false;
+    this.lastAppliedScrollTop = quantizeScrollTop(pos);
     this.pendingProgrammaticScrollTop = null;
   }
 
@@ -103,14 +119,25 @@ export class SmoothLyricsScroller {
         distanceBeforeStep !== 0 &&
         Math.sign(distanceBeforeStep) !== Math.sign(distanceAfterStep)
       ) {
-        this.current = this.target;
-        this.velocity = 0;
+        if (!this.bounceEnabled || this.crossedTarget) {
+          this.current = this.target;
+          this.velocity = 0;
+          this.crossedTarget = false;
+          this.bounceEnabled = false;
+        } else {
+          this.crossedTarget = true;
+          if (Math.abs(this.velocity) < MIN_BOUNCE_VELOCITY_PX_S) {
+            this.velocity = Math.sign(this.velocity) * MIN_BOUNCE_VELOCITY_PX_S;
+          }
+        }
       }
     }
 
     if (Math.abs(this.target - this.current) < 0.05 && Math.abs(this.velocity) < 0.01) {
       this.current = this.target;
       this.velocity = 0;
+      this.crossedTarget = false;
+      this.bounceEnabled = false;
     }
 
     this.applyScroll(this.current);
@@ -119,6 +146,8 @@ export class SmoothLyricsScroller {
   snapToTarget() {
     this.current = this.target;
     this.velocity = 0;
+    this.crossedTarget = false;
+    this.bounceEnabled = false;
     this.applyScroll(this.current);
   }
 
@@ -135,7 +164,7 @@ export class SmoothLyricsScroller {
   }
 
   private applyScroll(pos: number) {
-    const scrollTop = Math.round(pos);
+    const scrollTop = quantizeScrollTop(pos);
     if (scrollTop === this.lastAppliedScrollTop) return;
     this.lastAppliedScrollTop = scrollTop;
     this.programmaticScroll = true;
@@ -152,8 +181,8 @@ export class SmoothLyricsScroller {
       const expected = this.pendingProgrammaticScrollTop;
       if (expected === null) return;
 
-      const actual = Math.round(scrollEl.scrollTop);
-      if (actual !== expected) {
+      const actual = scrollEl.scrollTop;
+      if (Math.abs(actual - expected) > 0.5) {
         this.pendingProgrammaticScrollTop = null;
         return;
       }

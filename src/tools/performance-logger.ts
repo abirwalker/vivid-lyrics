@@ -65,7 +65,10 @@ export type PerformanceSnapshot = {
     averageIntervalMs: number;
     p95IntervalMs: number;
     estimatedBudgetMs: number;
-    delayedFrames: number;
+    estimatedDroppedFrames: number;
+    estimatedDropEvents: number;
+    estimatedDropRatePercent: number;
+    estimatedDelayedFrames: number;
   };
   timings: Record<string, {
     calls: number;
@@ -151,13 +154,46 @@ function mapSnapshot(source: Map<string, number>): Record<string, number> {
   return Object.fromEntries(source.entries());
 }
 
+function estimateFrameLoss(intervals: number[], budgetMs: number): {
+  droppedFrames: number;
+  dropEvents: number;
+  dropRatePercent: number;
+  delayedFrames: number;
+} {
+  if (budgetMs <= 0 || !intervals.length) {
+    return { droppedFrames: 0, dropEvents: 0, dropRatePercent: 0, delayedFrames: 0 };
+  }
+
+  const delayedThreshold = budgetMs * 1.5;
+  let droppedFrames = 0;
+  let dropEvents = 0;
+  let delayedFrames = 0;
+
+  for (const interval of intervals) {
+    if (interval > delayedThreshold) delayedFrames++;
+
+    const missedFrames = Math.max(0, Math.round(interval / budgetMs) - 1);
+    if (missedFrames === 0) continue;
+    droppedFrames += missedFrames;
+    dropEvents++;
+  }
+
+  const expectedFrames = intervals.length + droppedFrames;
+  return {
+    droppedFrames,
+    dropEvents,
+    dropRatePercent: expectedFrames > 0 ? (droppedFrames / expectedFrames) * 100 : 0,
+    delayedFrames,
+  };
+}
+
 export function getPerformanceSnapshot(): PerformanceSnapshot {
   const now = performance.now();
   const windowSeconds = Math.max((now - windowStartedAt) / 1000, 0.001);
   const sortedIntervals = [...frameIntervals].sort((a, b) => a - b);
   const estimatedBudgetMs = percentile(sortedIntervals, 0.2);
-  const delayedThreshold = estimatedBudgetMs > 0 ? estimatedBudgetMs * 1.5 : Infinity;
   const totalInterval = frameIntervals.reduce((sum, value) => sum + value, 0);
+  const frameLoss = estimateFrameLoss(frameIntervals, estimatedBudgetMs);
 
   return {
     enabled,
@@ -168,7 +204,10 @@ export function getPerformanceSnapshot(): PerformanceSnapshot {
       averageIntervalMs: frameIntervals.length ? totalInterval / frameIntervals.length : 0,
       p95IntervalMs: percentile(sortedIntervals, 0.95),
       estimatedBudgetMs,
-      delayedFrames: frameIntervals.filter((value) => value > delayedThreshold).length,
+      estimatedDroppedFrames: frameLoss.droppedFrames,
+      estimatedDropEvents: frameLoss.dropEvents,
+      estimatedDropRatePercent: frameLoss.dropRatePercent,
+      estimatedDelayedFrames: frameLoss.delayedFrames,
     },
     timings: timingSnapshot(windowSeconds),
     counters: mapSnapshot(counters),
@@ -217,7 +256,8 @@ export function reportPerformance(): PerformanceSnapshot {
   console.groupCollapsed(
     `[Vivid Lyrics Perf] ${snapshot.windowSeconds.toFixed(1)}s | ` +
     `${snapshot.frames.fps.toFixed(1)} RAF/s | p95 ${snapshot.frames.p95IntervalMs.toFixed(2)}ms | ` +
-    `${snapshot.frames.delayedFrames} delayed`,
+    `[Estimated] | ${snapshot.frames.estimatedDroppedFrames} Dropped | ` +
+    `${snapshot.frames.estimatedDelayedFrames} Delayed`,
   );
   if (timingRows.length) console.table(timingRows);
   console.table({
@@ -226,6 +266,10 @@ export function reportPerformance(): PerformanceSnapshot {
     ...snapshot.dom,
     heapMb: snapshot.heapMb === null ? "unavailable" : rounded(snapshot.heapMb, 1),
     estimatedFrameBudgetMs: rounded(snapshot.frames.estimatedBudgetMs, 2),
+    estimatedDroppedFrames: snapshot.frames.estimatedDroppedFrames,
+    estimatedDropEvents: snapshot.frames.estimatedDropEvents,
+    estimatedDropRatePercent: rounded(snapshot.frames.estimatedDropRatePercent, 2),
+    estimatedDelayedFrames: snapshot.frames.estimatedDelayedFrames,
   });
   if (snapshot.longAnimationFrames.length) {
     console.table(snapshot.longAnimationFrames.map((frame) => {

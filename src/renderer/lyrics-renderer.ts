@@ -299,6 +299,7 @@ export default class LyricsRenderer {
 	private autoScrollBlocked = false;
 	private programmaticScroll = false;
 	private userScrollTimer: ReturnType<typeof setTimeout> | null = null;
+	private seekingTimer: ReturnType<typeof setTimeout> | null = null;
 
   private simpleBar: SimpleBar | null = null;
   private scroller: SmoothLyricsScroller | null = null;
@@ -1708,6 +1709,25 @@ export default class LyricsRenderer {
     this.scrollToActive(instant);
   }
 
+  private setSeekingState(isSeeking: boolean, durationMs = 300): void {
+    if (isSeeking) {
+      this.scrollContainer.classList.add("Seeking");
+      if (this.seekingTimer) clearTimeout(this.seekingTimer);
+      this.seekingTimer = setTimeout(() => {
+        if (this.pendingSeekTimestamp === null) {
+          this.scrollContainer.classList.remove("Seeking");
+        }
+        this.seekingTimer = null;
+      }, durationMs);
+    } else {
+      if (this.seekingTimer) {
+        clearTimeout(this.seekingTimer);
+        this.seekingTimer = null;
+      }
+      this.scrollContainer.classList.remove("Seeking");
+    }
+  }
+
   /** Seek first, then scroll once Spotify has reported the new playback time. */
   private seekToLyricTime(timestamp: number): void {
     this.autoScrollBlocked = false;
@@ -1723,6 +1743,7 @@ export default class LyricsRenderer {
     this.syncScrollPosition();
     this.pendingSeekTimestamp = timestamp;
     this.pendingSeekDeadline = performance.now() + 1500;
+    this.setSeekingState(true, 1500);
     Spicetify.Player.seek(timestamp * 1000);
     renderLoop.ensureRunning();
   }
@@ -1827,6 +1848,7 @@ export default class LyricsRenderer {
       this.pendingSeekTimestamp = null;
       this.pendingSeekDeadline = 0;
       this.needsScroll = false;
+      this.setSeekingState(false);
       // The clicked target may remain in the same line as the old position;
       // force one fresh target calculation after the seek nevertheless.
       this.lastActiveIdx = -1;
@@ -1864,6 +1886,7 @@ export default class LyricsRenderer {
 
 		if (skipped && !wasPendingSeek) {
       this.lyricsEnded = false;
+      this.setSeekingState(true, 400);
       this.unblockAndScrollToActive();
       renderLoop.ensureRunning();
     }
@@ -2937,6 +2960,8 @@ export default class LyricsRenderer {
     this.unregisterFrame?.();
     this.unregisterFrame = null;
     if (this.userScrollTimer) clearTimeout(this.userScrollTimer);
+    if (this.seekingTimer) clearTimeout(this.seekingTimer);
+    this.seekingTimer = null;
     if (this.virtualRemeasureRaf) cancelAnimationFrame(this.virtualRemeasureRaf);
     this.virtualRemeasureRaf = 0;
     this.scroller?.dispose();

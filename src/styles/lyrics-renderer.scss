@@ -185,6 +185,10 @@ html.vl-centered-text .VividLyrics-FullscreenContent .VL-FS-Line,
             scale 0.2s cubic-bezier(0.37, 0, 0.63, 1);
     }
 
+    .LyricsScrollContainer.Seeking &.LineSynced .Vocals.Lead {
+        transition: none !important;
+    }
+
     &.LineSynced.Active .Vocals.Lead {
         scale: 1.05;
     }
@@ -418,7 +422,6 @@ html.vl-centered-text .VividLyrics-FullscreenContent .VL-FS-Line,
 .VocalsGroup.InterludeLine {
     overflow: visible;
     z-index: -1;
-    transition: margin 0.25s ease;
 
     &:not(.Active) {
         line-height: 0 !important;
