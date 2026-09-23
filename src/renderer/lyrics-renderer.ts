@@ -340,6 +340,7 @@ export default class LyricsRenderer {
         item.oppositeAligned,
         item.Lead?.OppositeAligned,
         item.Lead?.oppositeAligned,
+        item.lead?.oppositeAligned,
       ),
     );
     this.lyricsContainer.classList.toggle("HasDuetLines", hasOppositeAlignedLines);
@@ -520,16 +521,17 @@ export default class LyricsRenderer {
     const result: any[] = [];
     for (let i = 0; i < content.length; i++) {
       const item = content[i];
-      if (item.Type === "Interlude") {
+      if (item.Type === "Interlude" || item.type === "Interlude") {
         result.push(item);
         continue;
       }
-      const currStart = item.StartTime ?? item.Lead?.StartTime ?? 0;
+      const currStart = item.StartTime ?? item.startTime ?? item.Lead?.StartTime ?? item.lead?.startTime ?? 0;
       const currOppositeAligned = oppositeAlignedValue(
         item.OppositeAligned,
         item.oppositeAligned,
         item.Lead?.OppositeAligned,
         item.Lead?.oppositeAligned,
+        item.lead?.oppositeAligned,
       );
       // Intro gap before first line
       if (result.length === 0) {
@@ -544,8 +546,8 @@ export default class LyricsRenderer {
         }
       } else {
         const prev = result[result.length - 1];
-        if (prev.Type !== "Interlude") {
-          const prevEnd = prev.EndTime ?? prev.Lead?.EndTime ?? 0;
+        if (prev.Type !== "Interlude" && prev.type !== "Interlude") {
+          const prevEnd = prev.EndTime ?? prev.endTime ?? prev.Lead?.EndTime ?? prev.lead?.endTime ?? 0;
           const gap = currStart - prevEnd;
           if (gap >= INTERLUDE_GAP_THRESHOLD_S) {
             result.push({
@@ -593,7 +595,7 @@ export default class LyricsRenderer {
       const group = document.createElement("button");
       group.className = "VocalsGroup";
 
-      if (item.Type === "Interlude") {
+      if (item.Type === "Interlude" || item.type === "Interlude") {
         group.classList.add("InterludeLine");
         const interlude = document.createElement("div");
         interlude.className = "Interlude";
@@ -610,6 +612,7 @@ export default class LyricsRenderer {
                 next.oppositeAligned,
                 next.Lead?.OppositeAligned,
                 next.Lead?.oppositeAligned,
+                next.lead?.oppositeAligned,
               );
               break;
             }
@@ -618,8 +621,8 @@ export default class LyricsRenderer {
         this.applyVocalAlignment(interlude, interludeOppositeAligned);
         const dotGroup = document.createElement("div");
         dotGroup.className = "dotGroup";
-        const itemStart = item.StartTime ?? 0;
-        const itemEnd = item.EndTime ?? 0;
+        const itemStart = item.StartTime ?? item.startTime ?? 0;
+        const itemEnd = item.EndTime ?? item.endTime ?? 0;
         const totalTime = item.TotalTime ?? itemEnd - itemStart;
         const dotDuration = totalTime / 3;
         const dots: DotInfo[] = [];
@@ -689,8 +692,9 @@ export default class LyricsRenderer {
         continue;
       }
 
-      const startTime = (item.StartTime ?? item.Lead?.StartTime ?? 0) as number;
-      const endTime = (item.EndTime ?? item.Lead?.EndTime ?? 0) as number;
+      const lead = item.Lead ?? item.lead;
+      const startTime = (item.StartTime ?? item.startTime ?? lead?.StartTime ?? lead?.startTime ?? 0) as number;
+      const endTime = (item.EndTime ?? item.endTime ?? lead?.EndTime ?? lead?.endTime ?? 0) as number;
       const duration = endTime - startTime;
 
       const vocals = document.createElement("div");
@@ -700,6 +704,7 @@ export default class LyricsRenderer {
         item.oppositeAligned,
         item.Lead?.OppositeAligned,
         item.Lead?.oppositeAligned,
+        item.lead?.oppositeAligned,
       );
       this.applyVocalAlignment(vocals, leadOppositeAligned);
 
@@ -709,29 +714,30 @@ export default class LyricsRenderer {
       const backgroundWobbleChars: WobbleCharEl[] = [];
       const backgroundWobbleWords: WobbleWord[] = [];
       let backgroundText = "";
-      const isSyllableType = !!item.Lead?.Syllables?.length;
+      const leadSyllables: any[] = lead?.Syllables ?? lead?.syllables ?? [];
+      const isSyllableType = leadSyllables.length > 0;
       const startsWord = (list: any[], index: number): boolean => {
         if (index === 0) return true;
         if (showRomanized) {
-          const previousText = list[index - 1].RomanizedText ?? list[index - 1].romanizedText ?? list[index - 1].Text ?? "";
-          const currentText = list[index].RomanizedText ?? list[index].romanizedText ?? list[index].Text ?? "";
+          const previousText = list[index - 1].RomanizedText ?? list[index - 1].romanizedText ?? list[index - 1].Text ?? list[index - 1].text ?? "";
+          const currentText = list[index].RomanizedText ?? list[index].romanizedText ?? list[index].Text ?? list[index].text ?? "";
           if (/\s$/.test(previousText) || /^\s/.test(currentText)) return true;
           // API romanization may omit the tokenizer-specific boundary flags.
           return (
             list[index].RomanizedStartsWord ??
             list[index].romanizedStartsWord ??
-            !list[index - 1].IsPartOfWord
+            !(list[index - 1].IsPartOfWord ?? list[index - 1].isPartOfWord)
           );
         }
-        return !list[index - 1].IsPartOfWord;
+        return !(list[index - 1].IsPartOfWord ?? list[index - 1].isPartOfWord);
       };
       const displayText = (s: any): string =>
         showRomanized
-          ? (s.RomanizedText ?? s.romanizedText ?? s.Text ?? "").trim().replace(/\s+/g, " ")
-          : (s.Text ?? "");
+          ? (s.RomanizedText ?? s.romanizedText ?? s.Text ?? s.text ?? "").trim().replace(/\s+/g, " ")
+          : (s.Text ?? s.text ?? "");
 
       if (isSyllableType) {
-        const syllables: any[] = item.Lead.Syllables;
+        const syllables = leadSyllables;
 
         const words: any[][] = [];
         let currentWord: any[] | null = null;
@@ -752,8 +758,8 @@ export default class LyricsRenderer {
           wordSpan.className = "Word";
 
           for (const s of wordSyllables) {
-            const sStartTime = s.StartTime ?? startTime;
-            const sEndTime = s.EndTime ?? endTime;
+            const sStartTime = s.StartTime ?? s.startTime ?? startTime;
+            const sEndTime = s.EndTime ?? s.endTime ?? endTime;
             const sDuration = sEndTime - sStartTime;
             const text = displayText(s);
             const textLen = text.length;
@@ -762,7 +768,7 @@ export default class LyricsRenderer {
             const span = document.createElement("span");
             span.className = [
               "Syllable",
-              s.IsPartOfWord ? "PartOfWord" : "",
+              (s.IsPartOfWord ?? s.isPartOfWord) ? "PartOfWord" : "",
               emphasized ? "Emphasized" : "",
             ].filter(Boolean).join(" ");
             span.addEventListener("click", (e) => {
@@ -852,7 +858,9 @@ export default class LyricsRenderer {
           vocals.appendChild(wordSpan);
         }
       } else {
-        const fullText = showRomanized ? (item.RomanizedText ?? item.romanizedText ?? item.Text ?? "") : (item.Text ?? "");
+        const fullText = showRomanized
+          ? (item.RomanizedText ?? item.romanizedText ?? item.Text ?? item.text ?? "")
+          : (item.Text ?? item.text ?? "");
         if (!fullText) continue;
 
         const segments = parseLineSegments(fullText);
@@ -957,8 +965,8 @@ export default class LyricsRenderer {
             if (index === 0) text = text.replace(/^[([（【［]/, "");
             if (index === syllables.length - 1) text = text.replace(/[)）】］\]]$/, "");
           }
-          const syllableStart = syllable.StartTime ?? track.StartTime ?? startTime;
-          const syllableEnd = syllable.EndTime ?? track.EndTime ?? syllableStart;
+          const syllableStart = syllable.StartTime ?? syllable.startTime ?? track.StartTime ?? track.startTime ?? startTime;
+          const syllableEnd = syllable.EndTime ?? syllable.endTime ?? track.EndTime ?? track.endTime ?? syllableStart;
 
           if (startsWord(syllables, index) || !word) {
             word = document.createElement("span");
@@ -1055,7 +1063,7 @@ export default class LyricsRenderer {
         // with no spaces ("Giveupthefight") since syllable text has none.
         placeholder = document.createElement("span");
         placeholder.className = "VL-LinePlaceholder";
-        const placeholderSyllables: any[] = item.Lead.Syllables;
+        const placeholderSyllables = leadSyllables;
         let placeholderWord: HTMLSpanElement | null = null;
         for (let i = 0; i < placeholderSyllables.length; i++) {
           const isFirstInWord = startsWord(placeholderSyllables, i);
@@ -1091,7 +1099,7 @@ export default class LyricsRenderer {
         const wWords: WobbleWord[] = [];
         let wCurrentWord: SyllableInfo[] | null = null;
         for (let i = 0; i < syllableData.length; i++) {
-          const syllables: any[] = item.Lead.Syllables;
+          const syllables = leadSyllables;
           // Match the exact boundaries used to build the visible .Word nodes.
           // Romanized Japanese boundaries come from Lindera and intentionally
           // differ from the provider's original-script IsPartOfWord grouping.

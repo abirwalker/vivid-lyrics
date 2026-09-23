@@ -1,75 +1,75 @@
-import type { TransformedLyrics } from "./types";
-import { query } from "./api";
-import { adaptLyrics } from "./adapt";
-import { unpackLyrics } from "./unpack";
-import { getLyricsFromCache, setLyricsCache, setLyricsCacheNegative } from "./cache";
+import type { TransformedLyrics } from "./types.ts";
+import { getLyricsCacheLookup, setLyricsCache, setLyricsCacheNegative } from "./cache.ts";
+import { fetchFromProviders } from "./providers/index.ts";
+import { RequestFailure } from "./providers/request.ts";
+import { buildTrackQuery, getSpotifyTrackId } from "./track-query.ts";
 
-async function getAccessToken(): Promise<string> {
-  try {
-    const state = (Spicetify.Platform as any)?.AuthorizationAPI?.getState?.();
-    const token = state?.token?.accessToken;
-    if (state?.isAuthorized !== false && typeof token === "string" && token.trim()) {
-      return token;
-    }
-  } catch {
-    // Older clients may not expose the authorization store.
-  }
+const CHAIN_TIMEOUT_MS = 18000;
 
-  try {
-    const result = await Spicetify.CosmosAsync.get("sp://oauth/v2/token");
-    const token = result?.accessToken;
-    if (typeof token === "string" && token.trim()) return token;
-  } catch {
-    // The legacy OAuth resolver is unavailable on some Spotify clients.
-  }
-
-  const token = (Spicetify.Platform?.Session as any)?.accessToken;
-  if (typeof token === "string" && token.trim()) return token;
-  throw new Error("Could not obtain access token from Spotify authorization or legacy sources");
-}
-
-function getTrackId(uri: string): string | null {
-  if (!uri?.startsWith("spotify:track:")) return null;
-  return uri.split(":")[2] ?? null;
-}
-
-export async function fetchLyrics(uri: string): Promise<TransformedLyrics | null> {
-  const trackId = getTrackId(uri);
+export async function fetchLyrics(
+  uri: string,
+  signal: AbortSignal = new AbortController().signal,
+): Promise<TransformedLyrics | null> {
+  const trackId = getSpotifyTrackId(uri);
   if (!trackId) return null;
-
-  const cached = getLyricsFromCache(trackId);
+  const cached = getLyricsCacheLookup(trackId);
   if (cached !== undefined) {
-    console.log("[VividLyrics] cache hit:", trackId);
-    return cached;
+    console.info("[VividLyrics] lyrics cache hit", {
+      spotifyId: trackId,
+      provider: cached.provider ?? "unknown",
+      lyricType: cached.lyrics?.type ?? "miss",
+    });
+    return cached.lyrics;
   }
+  if (signal.aborted) throw new RequestFailure("aborted", "Lyrics lookup aborted");
 
-  console.log("[VividLyrics] cache miss:", trackId);
+  const chainController = new AbortController();
+  let chainTimedOut = false;
+  const abortChain = () => chainController.abort(signal.reason);
+  signal.addEventListener("abort", abortChain, { once: true });
+  const timeout = setTimeout(() => {
+    chainTimedOut = true;
+    chainController.abort();
+  }, CHAIN_TIMEOUT_MS);
 
   try {
-    const accessToken = await getAccessToken();
-    const results = await query(
-      [{ operation: "lyrics", variables: { id: trackId, auth: "SpicyLyrics-WebAuth" } }],
-      { "SpicyLyrics-WebAuth": `Bearer ${accessToken}` }
-    );
-
-     const result = results.get("0");
-
-     console.log("[VividLyrics] ===== RAW API RESPONSE =====");
-     console.log("[VividLyrics] httpStatus:", result?.httpStatus);
-     console.log("[VividLyrics] raw data:", JSON.stringify(result?.data, null, 2));
-     console.log("[VividLyrics] ============================");
-
-     if (!result || result.httpStatus === 404) {
-       setLyricsCacheNegative(trackId);
-       return null;
-     }
-     if (result.httpStatus !== 200) return null;
-
-     const lyrics = adaptLyrics(unpackLyrics(result.data));
-    setLyricsCache(trackId, lyrics);
-    return lyrics;
-  } catch (err) {
-    console.error("[VividLyrics] fetchLyrics error:", err);
+    const query = await buildTrackQuery(uri, chainController.signal);
+    if (!query) return null;
+    console.info("[VividLyrics] lyrics search", {
+      spotifyId: query.spotifyId,
+      title: query.title,
+      artists: query.artists,
+      album: query.album ?? null,
+      durationMs: query.durationMs ?? null,
+      isrc: query.isrc ?? null,
+    });
+    const result = await fetchFromProviders(query, chainController.signal);
+    if (result.lyrics) {
+      console.info("[VividLyrics] lyrics selected", {
+        provider: result.provider,
+        lyricType: result.lyrics.type,
+        title: query.title,
+        artists: query.artists,
+        album: query.album ?? null,
+      });
+      setLyricsCache(trackId, result.lyrics, result.provider ?? undefined);
+      return result.lyrics;
+    }
+    console.info("[VividLyrics] lyrics unavailable", {
+      title: query.title,
+      artists: query.artists,
+      album: query.album ?? null,
+      definitiveMiss: result.definitiveMiss,
+      instrumental: result.instrumental,
+    });
+    if (result.definitiveMiss) setLyricsCacheNegative(trackId);
     return null;
+  } catch (error) {
+    if (signal.aborted) throw new RequestFailure("aborted", "Lyrics lookup aborted", { cause: error });
+    if (!chainTimedOut) console.warn("[VividLyrics] provider chain failed", error);
+    return null;
+  } finally {
+    clearTimeout(timeout);
+    signal.removeEventListener("abort", abortChain);
   }
 }

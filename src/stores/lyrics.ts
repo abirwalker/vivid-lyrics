@@ -11,6 +11,7 @@ let lyricsLoading = false;
 const inFlightLoads = new Map<string, Promise<TransformedLyrics | null>>();
 const completedRomanizations = new WeakSet<TransformedLyrics>();
 const inFlightRomanizations = new WeakMap<TransformedLyrics, Promise<void>>();
+let activeFetchController: AbortController | null = null;
 
 export function getLyrics(): TransformedLyrics | null {
   return currentLyrics;
@@ -93,6 +94,9 @@ export async function loadLyrics(uri: string): Promise<TransformedLyrics | null>
 
 async function loadLyricsFresh(uri: string): Promise<TransformedLyrics | null> {
   console.log(`[VividLyrics] loadLyrics: fresh load for ${uri}`);
+  activeFetchController?.abort();
+  const fetchController = new AbortController();
+  activeFetchController = fetchController;
   currentUri = uri;
   currentFetchId++;
   const fetchId = currentFetchId;
@@ -103,9 +107,10 @@ async function loadLyricsFresh(uri: string): Promise<TransformedLyrics | null> {
 
   let lyrics: TransformedLyrics | null;
   try {
-    lyrics = await fetchLyrics(uri);
+    lyrics = await fetchLyrics(uri, fetchController.signal);
   } catch (err) {
     if (fetchId !== currentFetchId) return null;
+    if (fetchController.signal.aborted) return null;
     console.error("[VividLyrics] lyrics load failed:", err);
     lyricsLoading = false;
     emit("lyrics:change", null);
@@ -115,6 +120,7 @@ async function loadLyricsFresh(uri: string): Promise<TransformedLyrics | null> {
   // A superseded request must not publish a null update. The newer request
   // owns the UI state and will publish its result when it completes.
   if (fetchId !== currentFetchId) return null;
+  if (activeFetchController === fetchController) activeFetchController = null;
 
   currentLyrics = lyrics;
   lyricsLoading = false;
@@ -135,6 +141,8 @@ async function loadLyricsFresh(uri: string): Promise<TransformedLyrics | null> {
 }
 
 export function clearLyrics(): void {
+  activeFetchController?.abort();
+  activeFetchController = null;
   currentLyrics = null;
   currentUri = null;
   lyricsLoading = false;

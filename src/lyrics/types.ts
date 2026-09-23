@@ -18,7 +18,7 @@ export type LineLyrics = TimeRange & {
   content: (LineVocal | Interlude)[];
 };
 
-export type Syllable = TextContent & {
+export type Syllable = TimeRange & TextContent & {
   isPartOfWord: boolean;
 };
 
@@ -26,7 +26,7 @@ export type SyllableVocal = TimeRange & {
   syllables: Syllable[];
 };
 
-export type SyllableVocalSet = {
+export type SyllableVocalSet = TimeRange & {
   type: "Vocal";
   oppositeAligned: boolean;
   lead: SyllableVocal;
