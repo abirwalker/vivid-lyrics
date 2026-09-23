@@ -5,22 +5,19 @@ let initPromise: Promise<any> | null = null;
 
 let progressEl: HTMLDivElement | null = null;
 
-/** The `@spicemod/creator` dev pipeline injects the extension as a classic
- *  `<script>` (`sc-js-injected`). Resolve the WASM asset relative to that
- *  script's own URL so the dev server can serve it. */
-function getWasmUrl(): string | undefined {
+const PROD_WASM_URL =
+  "https://raw.githubusercontent.com/abirwalker/vivid-lyrics/master/assets/lindera_wasm_bg.wasm";
+
+/** Dev serves the sidecar next to the injected script; production fetches the
+ *  committed binary from GitHub (Spicetify never installs the sidecar). */
+function getWasmUrl(): string {
   try {
     const liveReload = document.getElementById("sc-js-injected") as HTMLScriptElement | null;
     if (liveReload?.src) return new URL("lindera_wasm_bg.wasm", liveReload.src).href;
-    for (const s of Array.from(document.querySelectorAll("script[src]"))) {
-      if ((s as HTMLScriptElement).src.includes("vivid-lyrics")) {
-        return new URL("lindera_wasm_bg.wasm", (s as HTMLScriptElement).src).href;
-      }
-    }
   } catch {
     /* fall through */
   }
-  return undefined;
+  return PROD_WASM_URL;
 }
 
 function showProgress(): void {
@@ -110,12 +107,7 @@ export async function ensureLindera(): Promise<any> {
     initPromise = (async () => {
       showProgress();
       try {
-        const wasmUrl = getWasmUrl();
-        if (wasmUrl) {
-          await __wbg_init(wasmUrl);
-        } else {
-          await __wbg_init();
-        }
+        await __wbg_init(getWasmUrl());
         const builder = new TokenizerBuilder();
         builder.setMode("normal");
         builder.setDictionary("embedded://unidic");
