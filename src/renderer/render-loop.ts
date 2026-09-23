@@ -128,7 +128,8 @@ class RenderLoopCoordinator {
         change.key === "glowIntensity" ||
         change.key === "blurEnabled" ||
         change.key === "blurStrength" ||
-        change.key === "springMode"
+        change.key === "springMode" ||
+        change.key === "springIntensity"
       ) {
         this.refreshSettings();
       }

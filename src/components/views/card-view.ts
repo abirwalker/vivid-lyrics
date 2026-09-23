@@ -477,6 +477,7 @@ function observeNPV() {
       key !== "cardScrollMode" &&
       key !== "centeredTextCard" &&
       key !== "animationStyle" &&
+      key !== "springIntensity" &&
       key !== "romanization" &&
       key !== "gradientDirection" &&
       key !== "stripBackgroundBrackets"

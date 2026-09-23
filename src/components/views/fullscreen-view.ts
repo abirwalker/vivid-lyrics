@@ -335,6 +335,7 @@ export function setupFullscreen(): void {
       key !== "gradientDirection" &&
       key !== "controlsPosition" &&
       key !== "animationStyle" &&
+      key !== "springIntensity" &&
       key !== "romanization" &&
       key !== "fullscreenPlayerWidget" &&
       key !== "stripBackgroundBrackets"

@@ -268,6 +268,7 @@ function open(): void {
       key !== "controlsPosition" &&
       key !== "scrollMode" &&
       key !== "animationStyle" &&
+      key !== "springIntensity" &&
       key !== "romanization" &&
       key !== "mainPlayerWidget" &&
       key !== "stripBackgroundBrackets"

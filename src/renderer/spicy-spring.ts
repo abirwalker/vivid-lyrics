@@ -351,15 +351,72 @@ const CurrentSpring = {
 };
 
 // ============================================================
-// ACTIVE MODE ACCESSOR
+// ACTIVE MODE ACCESSOR + SPRING INTENSITY
 // ============================================================
-let cachedSplines = get("springMode") === "current" ? CurrentSplines : LegacySplines;
+// springIntensity (0–2, default 1) scales spline amplitude about each
+// channel's neutral anchor: scale about 1, y-offset/glow about 0.
+// Intensity 1 returns the prebuilt splines unchanged.
+
+let cachedIntensity = get("springIntensity");
+
+function scaleAbout(value: number, anchor: number, k: number): number {
+  return k === 1 ? value : anchor + (value - anchor) * k;
+}
+
+function scaleRange(
+  range: { Time: number; Value: number }[],
+  anchor: number,
+  k: number,
+): { Time: number; Value: number }[] {
+  if (k === 1) return range;
+  return range.map((v) => ({ Time: v.Time, Value: scaleAbout(v.Value, anchor, k) }));
+}
+
+function buildSplines(mode: "legacy" | "current") {
+  const k = cachedIntensity;
+  if (k === 1) return mode === "current" ? CurrentSplines : LegacySplines;
+
+  const base = mode === "current"
+    ? {
+        scale: CurrentScaleRange,
+        letterScale: CurrentLetterScaleRange,
+        yOffset: CurrentYOffsetRange,
+        letterYOffset: CurrentLetterYOffsetRange,
+      }
+    : {
+        scale: LegacyScaleRange,
+        letterScale: LegacyScaleRange,
+        yOffset: LegacyYOffsetRange,
+        letterYOffset: LegacyYOffsetRange,
+      };
+
+  return {
+    Scale: makeSpline(scaleRange(base.scale, 1, k)),
+    LetterScale: makeSpline(scaleRange(base.letterScale, 1, k)),
+    YOffset: makeSpline(scaleRange(base.yOffset, 0, k)),
+    LetterYOffset: makeSpline(scaleRange(base.letterYOffset, 0, k)),
+    Glow: makeSpline(scaleRange(GlowRange, 0, k)),
+    LineGlow: makeSpline(scaleRange(LineGlowRange, 0, k)),
+  };
+}
+
+function activeMode(): "legacy" | "current" {
+  return get("springMode") === "current" ? "current" : "legacy";
+}
+
+let cachedSplines = buildSplines(activeMode());
 let cachedSpringConfig = get("springMode") === "current" ? CurrentSpring : LegacySpring;
 
 onSettingsChange((change) => {
-  if (!change.key || change.key === "springMode") {
-    cachedSplines = get("springMode") === "current" ? CurrentSplines : LegacySplines;
-    cachedSpringConfig = get("springMode") === "current" ? CurrentSpring : LegacySpring;
+  if (
+    !change.key ||
+    change.key === "springMode" ||
+    change.key === "springIntensity"
+  ) {
+    cachedIntensity = get("springIntensity");
+    const mode = activeMode();
+    cachedSplines = buildSplines(mode);
+    cachedSpringConfig = mode === "current" ? CurrentSpring : LegacySpring;
   }
 });
 
@@ -510,12 +567,16 @@ export type DotSpringSet = {
   Opacity: Spring;
 };
 
+function dotGoal(spline: Spline, progress: number, anchor: number): number {
+  return scaleAbout(spline.at(progress), anchor, cachedIntensity);
+}
+
 export function createDotSpringSet(): DotSpringSet {
   return {
-    Scale: new Spring(DotScaleSpline.at(0), DOT_SCALE_FREQUENCY, DOT_SCALE_DAMPING),
-    YOffset: new Spring(DotYOffsetSpline.at(0), DOT_YOFFSET_FREQUENCY, DOT_YOFFSET_DAMPING),
-    Glow: new Spring(DotGlowSpline.at(0), DOT_GLOW_FREQUENCY, DOT_GLOW_DAMPING),
-    Opacity: new Spring(DotOpacitySpline.at(0), DOT_OPACITY_FREQUENCY, DOT_OPACITY_DAMPING),
+    Scale: new Spring(dotGoal(DotScaleSpline, 0, 1), DOT_SCALE_FREQUENCY, DOT_SCALE_DAMPING),
+    YOffset: new Spring(dotGoal(DotYOffsetSpline, 0, 0), DOT_YOFFSET_FREQUENCY, DOT_YOFFSET_DAMPING),
+    Glow: new Spring(dotGoal(DotGlowSpline, 0, 0), DOT_GLOW_FREQUENCY, DOT_GLOW_DAMPING),
+    Opacity: new Spring(dotGoal(DotOpacitySpline, 0, 0), DOT_OPACITY_FREQUENCY, DOT_OPACITY_DAMPING),
   };
 }
 
@@ -526,20 +587,20 @@ export function setDotSpringGoals(
   replacePosition = false,
 ): void {
   if (state === "Active") {
-    springs.Scale.SetGoal(DotScaleSpline.at(progress), replacePosition);
-    springs.YOffset.SetGoal(DotYOffsetSpline.at(progress), replacePosition);
-    springs.Glow.SetGoal(DotGlowSpline.at(progress), replacePosition);
-    springs.Opacity.SetGoal(DotOpacitySpline.at(progress), replacePosition);
+    springs.Scale.SetGoal(dotGoal(DotScaleSpline, progress, 1), replacePosition);
+    springs.YOffset.SetGoal(dotGoal(DotYOffsetSpline, progress, 0), replacePosition);
+    springs.Glow.SetGoal(dotGoal(DotGlowSpline, progress, 0), replacePosition);
+    springs.Opacity.SetGoal(dotGoal(DotOpacitySpline, progress, 0), replacePosition);
   } else if (state === "NotSung") {
-    springs.Scale.SetGoal(DotScaleSpline.at(0), replacePosition);
-    springs.YOffset.SetGoal(DotYOffsetSpline.at(0), replacePosition);
-    springs.Glow.SetGoal(DotGlowSpline.at(0), replacePosition);
-    springs.Opacity.SetGoal(DotOpacitySpline.at(0), replacePosition);
+    springs.Scale.SetGoal(dotGoal(DotScaleSpline, 0, 1), replacePosition);
+    springs.YOffset.SetGoal(dotGoal(DotYOffsetSpline, 0, 0), replacePosition);
+    springs.Glow.SetGoal(dotGoal(DotGlowSpline, 0, 0), replacePosition);
+    springs.Opacity.SetGoal(dotGoal(DotOpacitySpline, 0, 0), replacePosition);
   } else {
-    springs.Scale.SetGoal(DotScaleSpline.at(1), replacePosition);
-    springs.YOffset.SetGoal(DotYOffsetSpline.at(1), replacePosition);
-    springs.Glow.SetGoal(DotGlowSpline.at(1), replacePosition);
-    springs.Opacity.SetGoal(DotOpacitySpline.at(1), replacePosition);
+    springs.Scale.SetGoal(dotGoal(DotScaleSpline, 1, 1), replacePosition);
+    springs.YOffset.SetGoal(dotGoal(DotYOffsetSpline, 1, 0), replacePosition);
+    springs.Glow.SetGoal(dotGoal(DotGlowSpline, 1, 0), replacePosition);
+    springs.Opacity.SetGoal(dotGoal(DotOpacitySpline, 1, 0), replacePosition);
   }
 }
 
