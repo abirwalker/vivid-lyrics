@@ -156,11 +156,11 @@ export class SmoothLyricsScroller {
   }
 
   getScrollElement(): HTMLElement {
-    return this.simpleBar.getScrollElement();
+    return this.simpleBar.getScrollElement()!;
   }
 
   getContentElement(): HTMLElement {
-    return this.simpleBar.getContentElement();
+    return this.simpleBar.getContentElement()!;
   }
 
   private applyScroll(pos: number) {
@@ -170,12 +170,12 @@ export class SmoothLyricsScroller {
     this.programmaticScroll = true;
     this.pendingProgrammaticScrollTop = scrollTop;
     this.onScrollApplied?.(scrollTop);
-    this.simpleBar.getScrollElement().scrollTop = scrollTop;
+    this.getScrollElement().scrollTop = scrollTop;
     this.programmaticScroll = false;
   }
 
   private bindProgrammaticScrollIsolation() {
-    const scrollEl = this.simpleBar.getScrollElement();
+    const scrollEl = this.getScrollElement();
     this.onProgrammaticScroll = (event: Event) => {
       if (event.target !== scrollEl) return;
       const expected = this.pendingProgrammaticScrollTop;
@@ -223,14 +223,14 @@ export class SmoothLyricsScroller {
         this.userScrolling = false;
       }, this.manualPauseMs);
     };
-    const scrollEl = this.simpleBar.getScrollElement();
+    const scrollEl = this.getScrollElement();
     scrollEl.addEventListener("scroll", this.onUserInput, { passive: true });
   }
 
   dispose() {
     if (this.resumeTimer) window.clearTimeout(this.resumeTimer);
     if (this.onUserInput) {
-      this.simpleBar.getScrollElement().removeEventListener("scroll", this.onUserInput);
+      this.getScrollElement().removeEventListener("scroll", this.onUserInput);
     }
     if (this.onProgrammaticScroll) {
       window.removeEventListener("scroll", this.onProgrammaticScroll, true);

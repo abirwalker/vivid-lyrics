@@ -364,7 +364,7 @@ export default class LyricsRenderer {
         recordPerformanceDuration(recalculateMetric, performance.now() - startedAt);
       }
     };
-    this.frameScrollTop = this.simpleBar.getScrollElement().scrollTop;
+    this.frameScrollTop = this.simpleBar.getScrollElement()!.scrollTop;
     this.lyricsContainer.style.paddingBottom =
       viewMode === "card" ? "1em" : "3em";
 
@@ -426,11 +426,13 @@ export default class LyricsRenderer {
         this.cachedContainerWidth = this.scrollContainer.clientWidth;
         if (this.simpleBar) {
           const scrollEl = this.simpleBar.getScrollElement();
-          this.cachedContainerHeight = scrollEl.clientHeight;
-          this.cachedMaxScroll = Math.max(
-            0,
-            scrollEl.scrollHeight - scrollEl.clientHeight,
-          );
+          if (scrollEl) {
+            this.cachedContainerHeight = scrollEl.clientHeight;
+            this.cachedMaxScroll = Math.max(
+              0,
+              scrollEl.scrollHeight - scrollEl.clientHeight,
+            );
+          }
           this.refreshFullLineVirtualization(true);
         }
         this.scheduleVirtualLayoutRemeasure();
@@ -1199,7 +1201,7 @@ export default class LyricsRenderer {
 
   /** Cache layout positions once after DOM insertion. Called once — never during animation. */
   private cacheLayoutPositions(): void {
-    const scrollEl = this.simpleBar!.getScrollElement();
+    const scrollEl = this.simpleBar!.getScrollElement()!;
     this.cachedContainerHeight = scrollEl.clientHeight;
     this.cachedContainerWidth = this.scrollContainer.clientWidth;
 
@@ -1312,7 +1314,7 @@ export default class LyricsRenderer {
     this.virtualInterludeSignature = "";
     this.updateVirtualInterludeGeometry(true);
     this.simpleBar?.recalculate();
-    const scrollEl = this.simpleBar!.getScrollElement();
+    const scrollEl = this.simpleBar!.getScrollElement()!;
     this.cachedContainerHeight = scrollEl.clientHeight;
     this.cachedMaxScroll = Math.max(
       0,
@@ -1375,10 +1377,12 @@ export default class LyricsRenderer {
     this.simpleBar?.recalculate();
     if (this.simpleBar) {
       const scrollEl = this.simpleBar.getScrollElement();
-      this.cachedMaxScroll = Math.max(
-        0,
-        scrollEl.scrollHeight - scrollEl.clientHeight,
-      );
+      if (scrollEl) {
+        this.cachedMaxScroll = Math.max(
+          0,
+          scrollEl.scrollHeight - scrollEl.clientHeight,
+        );
+      }
     }
     this.virtualMountSignature = "";
     this.refreshFullLineVirtualization(true);
@@ -1425,7 +1429,7 @@ export default class LyricsRenderer {
       this.cacheLayoutPositions();
       this.enableFullLineVirtualization();
       this.frameScrollTop = Math.max(0, Math.min(scrollTop, this.cachedMaxScroll));
-      this.simpleBar!.getScrollElement().scrollTop = this.frameScrollTop;
+      this.simpleBar!.getScrollElement()!.scrollTop = this.frameScrollTop;
       this.scroller?.syncPosition(this.frameScrollTop);
       this.applyVirtualizationWindow(this.referenceLineIndex, true);
     });
@@ -1553,7 +1557,7 @@ export default class LyricsRenderer {
   }
 
   private watchUserScroll(): void {
-    const scrollEl = this.simpleBar!.getScrollElement();
+    const scrollEl = this.simpleBar!.getScrollElement()!;
     const track = this.scrollContainer;
 
     const onUserGesture = () => {
@@ -1665,7 +1669,7 @@ export default class LyricsRenderer {
    * position the user sees.
    */
   private syncScrollPosition(): number {
-    const scrollTop = this.simpleBar?.getScrollElement().scrollTop ?? this.frameScrollTop;
+    const scrollTop = this.simpleBar?.getScrollElement()?.scrollTop ?? this.frameScrollTop;
     this.frameScrollTop = scrollTop;
     this.scroller?.syncPosition(scrollTop);
     this.refreshFullLineVirtualization();
@@ -2000,7 +2004,7 @@ export default class LyricsRenderer {
   private isLineNearViewport(line: LineInfo): boolean {
     const scrollTop = this.frameScrollTop;
     const containerHeight =
-      this.cachedContainerHeight || this.simpleBar!.getScrollElement().clientHeight;
+      this.cachedContainerHeight || this.simpleBar!.getScrollElement()!.clientHeight;
     const margin = containerHeight; // one extra viewport of slack above/below
     const top = line.cachedOffsetTop;
     const bottom = top + line.cachedHeight;
@@ -2880,7 +2884,7 @@ export default class LyricsRenderer {
 
 		if (activeIdx < 0) {
 			if (this.lyricsEnded) {
-				const scrollEl = this.simpleBar!.getScrollElement();
+				const scrollEl = this.simpleBar!.getScrollElement()!;
 				this.programmaticScroll = true;
 				this.frameScrollTop = this.cachedMaxScroll;
 				scrollEl.scrollTop = scrollEl.scrollHeight;
@@ -2916,7 +2920,7 @@ export default class LyricsRenderer {
 			return;
 		}
 
-		const scrollEl = this.simpleBar!.getScrollElement();
+		const scrollEl = this.simpleBar!.getScrollElement()!;
 		const containerHeight =
 			this.cachedContainerHeight || scrollEl.clientHeight;
 		const scrollTop = this.frameScrollTop;
@@ -2999,6 +3003,7 @@ export default class LyricsRenderer {
       if (this.destroyed || !this.simpleBar) return;
       this.simpleBar.recalculate();
       const scrollEl = this.simpleBar.getScrollElement();
+      if (!scrollEl) return;
       this.cachedContainerHeight = scrollEl.clientHeight;
       this.cachedMaxScroll = Math.max(
         0,

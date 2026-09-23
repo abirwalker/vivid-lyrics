@@ -1,6 +1,7 @@
 import { copyFileSync, existsSync, mkdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { defineConfig } from "@spicemod/creator";
+import type { PluginBuild, OnResolveArgs, OnLoadArgs } from "esbuild";
 import { ProjectName, ProjectVersion } from "./project/config";
 
 /** `process` is typed by @types/bun in this repo; the config runs under the
@@ -11,7 +12,7 @@ const projectRoot = (process as unknown as { cwd: () => string }).cwd();
  *  serve it (`spicetify serve` / `@spicemod/creator` dev pipeline). */
 const copyLinderaWasm = (): any => ({
   name: "vivid-lyrics-copy-lindera-wasm",
-  setup(build) {
+  setup(build: PluginBuild) {
     build.onEnd(() => {
       const src = resolve(projectRoot, "node_modules/lindera-wasm-web-unidic/lindera_wasm_bg.wasm");
       const outDir = resolve(build.initialOptions.outdir ?? "./dist");
@@ -24,7 +25,7 @@ const copyLinderaWasm = (): any => ({
 /** Copy the NewMM Thai dictionary used by the RTGS romanizer. */
 const copyThaiWords = (): any => ({
   name: "vivid-lyrics-copy-thai-words",
-  setup(build) {
+  setup(build: PluginBuild) {
     build.onEnd(() => {
       const src = resolve(projectRoot, "node_modules/nlpo3-newmm-typescript/dist/words_th.txt");
       const outDir = resolve(build.initialOptions.outdir ?? "./dist");
@@ -39,7 +40,7 @@ const copyThaiWords = (): any => ({
  *  browser-fetched words file). Stub them so the bundle stays browser-safe. */
 const nodeBuiltinShims = (): any => ({
   name: "vivid-lyrics-node-builtin-shims",
-  setup(build) {
+  setup(build: PluginBuild) {
     const stub = (name: string) => ({
       loader: "js" as const,
       contents: `const throwNode = (api) => () => { throw new Error("${name} is node-only and not used in this bundle"); };
@@ -55,13 +56,13 @@ export const path = { resolve, dirname, join };
 export const url = { fileURLToPath, pathToFileURL };
 export default fs;`,
     });
-    build.onResolve({ filter: /^(fs|path|url)$/ }, (args) => {
+    build.onResolve({ filter: /^(fs|path|url)$/ }, (args: OnResolveArgs) => {
       if (args.importer.includes("nlpo3-newmm-typescript")) {
         return { path: args.path, namespace: "node-shim" };
       }
       return undefined;
     });
-    build.onLoad({ filter: /.*/, namespace: "node-shim" }, (args) => stub(args.path));
+    build.onLoad({ filter: /.*/, namespace: "node-shim" }, (args: OnLoadArgs) => stub(args.path));
   },
 });
 
