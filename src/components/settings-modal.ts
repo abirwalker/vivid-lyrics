@@ -41,7 +41,8 @@ function applyNativeLyricsVisibility(hide: boolean): void {
     document.head.appendChild(style);
   }
   style.textContent = hide
-    ? `.main-nowPlayingBar-lyricsButton { display: none !important; }`
+    ? `button[data-testid="lyrics-button"],
+       .main-nowPlayingBar-lyricsButton { display: none !important; }`
     : "";
 }
 
