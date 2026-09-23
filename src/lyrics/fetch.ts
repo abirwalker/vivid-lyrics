@@ -33,7 +33,7 @@ export async function fetchLyrics(
   }, CHAIN_TIMEOUT_MS);
 
   try {
-    const query = await buildTrackQuery(uri, chainController.signal);
+    const query = buildTrackQuery(uri);
     if (!query) return null;
     console.info("[VividLyrics] lyrics search", {
       spotifyId: query.spotifyId,
@@ -41,7 +41,6 @@ export async function fetchLyrics(
       artists: query.artists,
       album: query.album ?? null,
       durationMs: query.durationMs ?? null,
-      isrc: query.isrc ?? null,
     });
     const result = await fetchFromProviders(query, chainController.signal);
     if (result.lyrics) {

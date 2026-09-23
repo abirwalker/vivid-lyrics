@@ -13,7 +13,6 @@ type AmllItem = {
   artistNames?: string[];
   albumNames?: string[];
   spotifyIds?: string[];
-  isrcs?: string[];
   lyrics?: string;
 };
 
@@ -23,7 +22,6 @@ function candidate(item: AmllItem): MatchCandidate {
     artists: item.artistNames ?? [],
     albums: item.albumNames ?? [],
     spotifyIds: item.spotifyIds ?? [],
-    isrcs: item.isrcs ?? [],
   };
 }
 
@@ -63,15 +61,10 @@ async function lookupAmll(query: TrackQuery, signal: AbortSignal): Promise<Provi
     return result;
   };
 
-  for (const [key, value] of [["spotifyId", query.spotifyId], ["isrc", query.isrc]] as const) {
-    if (!value) continue;
-    const params = new URLSearchParams();
-    params.append(key, value);
-    const result = await fetchItem(params, signal);
-    sawTransientFailure ||= result.transient;
-    const accepted = accept(result.item);
-    if (accepted) return accepted;
-  }
+  const bySpotifyId = await fetchItem(new URLSearchParams({ spotifyId: query.spotifyId }), signal);
+  sawTransientFailure ||= bySpotifyId.transient;
+  const exact = accept(bySpotifyId.item);
+  if (exact) return exact;
 
   try {
     const params = new URLSearchParams({

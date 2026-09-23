@@ -1,6 +1,6 @@
 import { isJapanese, isRomaji } from "wanakana";
 import { parseTtml } from "../parsers/ttml.ts";
-import { cleanIsrc, cleanTitleForSearch, normalizeMatchText, scoreCandidate } from "./matching.ts";
+import { cleanTitleForSearch, normalizeMatchText, scoreCandidate } from "./matching.ts";
 import { fetchWithDeadline, isTransientStatus, RequestFailure } from "./request.ts";
 import type { MatchCandidate } from "./matching.ts";
 import type { Provider, ProviderResult, TrackQuery } from "./types.ts";
@@ -12,9 +12,27 @@ type BiniItem = {
   artist_name?: string;
   album_name?: string;
   duration?: number;
-  isrc?: string;
   lyricsUrl?: string;
 };
+
+type BiniDiagnostics = {
+  catalogItems: number;
+  matchedItems: number;
+  missingOrInvalidUrls: number;
+  lyricHttp404: number;
+  lyricOtherHttp: number;
+  parseRejected: number;
+  lyricRequestFailures: number;
+};
+
+function missReason(diagnostics: BiniDiagnostics, transient: boolean): string {
+  if (diagnostics.lyricHttp404) return "matching-lyrics-url-404";
+  if (diagnostics.parseRejected) return "matching-lyrics-parse-rejected";
+  if (diagnostics.lyricOtherHttp || diagnostics.lyricRequestFailures || transient) return "request-failure";
+  if (diagnostics.matchedItems) return "matching-candidate-unusable";
+  if (diagnostics.catalogItems) return "catalog-candidates-rejected";
+  return "no-catalog-candidate";
+}
 
 function itemsFromBody(body: unknown): BiniItem[] {
   if (Array.isArray(body)) return body;
@@ -29,7 +47,6 @@ function matchCandidate(item: BiniItem): MatchCandidate {
     artists: item.artist_name ? [item.artist_name] : [],
     albums: item.album_name ? [item.album_name] : [],
     durationMs: typeof item.duration === "number" ? item.duration * 1000 : undefined,
-    isrcs: item.isrc ? [item.isrc] : [],
   };
 }
 
@@ -84,11 +101,19 @@ async function fetchCandidateLyrics(
   query: TrackQuery,
   items: BiniItem[],
   signal: AbortSignal,
+  diagnostics: BiniDiagnostics,
   score: (item: BiniItem) => number | null = (item) => scoreCandidate(query, matchCandidate(item)),
 ): Promise<{ result: Extract<ProviderResult, { status: "lyrics" }> | null; transient: boolean }> {
   const candidates = new Map<string, BiniItem>();
   for (const item of items) {
-    candidates.set(`${item.isrc ?? ""}|${item.lyricsUrl ?? ""}`, item);
+    const key = JSON.stringify([
+      item.track_name,
+      item.artist_name,
+      item.album_name,
+      item.duration,
+      item.lyricsUrl,
+    ]);
+    candidates.set(key, item);
   }
 
   const ranked = [...candidates.values()]
@@ -96,16 +121,24 @@ async function fetchCandidateLyrics(
     .filter((entry): entry is { item: BiniItem; score: number } => entry.score !== null)
     .sort((a, b) => b.score - a.score)
     .slice(0, 5);
+  diagnostics.matchedItems += ranked.length;
   let staticLyrics: Extract<ProviderResult, { status: "lyrics" }> | null = null;
   let transient = false;
 
   for (const { item } of ranked) {
-    if (!item.lyricsUrl) continue;
+    if (!item.lyricsUrl) {
+      diagnostics.missingOrInvalidUrls++;
+      continue;
+    }
     let url: URL;
     try {
       url = new URL(item.lyricsUrl);
-      if (url.protocol !== "https:") continue;
+      if (url.protocol !== "https:") {
+        diagnostics.missingOrInvalidUrls++;
+        continue;
+      }
     } catch {
+      diagnostics.missingOrInvalidUrls++;
       continue;
     }
 
@@ -113,12 +146,21 @@ async function fetchCandidateLyrics(
       const response = await fetchWithDeadline(url.href, { signal });
       if (isTransientStatus(response.status)) {
         transient = true;
+        diagnostics.lyricOtherHttp++;
         continue;
       }
-      if (!response.ok) continue;
+      if (!response.ok) {
+        if (response.status === 404) {
+          diagnostics.lyricHttp404++;
+        } else {
+          diagnostics.lyricOtherHttp++;
+        }
+        continue;
+      }
       const lyrics = parseTtml(await response.text());
       if (!lyrics) {
         transient = true;
+        diagnostics.parseRejected++;
         continue;
       }
       if (lyrics.type !== "Static") {
@@ -128,6 +170,7 @@ async function fetchCandidateLyrics(
     } catch (error) {
       if (error instanceof RequestFailure && error.kind === "aborted") throw error;
       transient = true;
+      diagnostics.lyricRequestFailures++;
     }
   }
 
@@ -140,34 +183,36 @@ export async function lookupBini(
   readJapaneseTitle?: (title: string) => Promise<string>,
 ): Promise<ProviderResult> {
   let sawTransientFailure = false;
-  const isrc = cleanIsrc(query.isrc);
-
-  if (isrc) {
-    const exact = await requestItems(`${API}/getLyrics?isrc=${encodeURIComponent(isrc)}`, signal);
-    sawTransientFailure ||= exact.transient;
-    const fetched = await fetchCandidateLyrics(query, exact.items, signal);
-    sawTransientFailure ||= fetched.transient;
-    if (fetched.result) return fetched.result;
-  }
+  const diagnostics: BiniDiagnostics = {
+    catalogItems: 0,
+    matchedItems: 0,
+    missingOrInvalidUrls: 0,
+    lyricHttp404: 0,
+    lyricOtherHttp: 0,
+    parseRejected: 0,
+    lyricRequestFailures: 0,
+  };
 
   const searchItems: BiniItem[] = [];
   for (const search of searchQueries(query)) {
     const result = await requestItems(`${API}/getLyrics?q=${encodeURIComponent(search)}`, signal);
     sawTransientFailure ||= result.transient;
+    diagnostics.catalogItems += result.items.length;
     searchItems.push(...result.items);
   }
 
-  const searched = await fetchCandidateLyrics(query, searchItems, signal);
+  const searched = await fetchCandidateLyrics(query, searchItems, signal, diagnostics);
   sawTransientFailure ||= searched.transient;
   if (searched.result) return searched.result;
 
-  if (!isrc && query.durationMs && query.artists.length === 1
+  if (query.durationMs && query.artists.length === 1
     && isJapanese(query.title) && isRomaji(query.artists[0])) {
     const artistSearch = await requestItems(
       `${API}/getLyrics?q=${encodeURIComponent(query.artists[0])}`,
       signal,
     );
     sawTransientFailure ||= artistSearch.transient;
+    diagnostics.catalogItems += artistSearch.items.length;
     if (artistSearch.items.length) {
       const romanize = readJapaneseTitle ?? (await import("../romanize/romanize.ts")).romanizeJP;
       const reading = await romanize(query.title);
@@ -175,12 +220,26 @@ export async function lookupBini(
         query,
         artistSearch.items,
         signal,
+        diagnostics,
         (item) => romanizedCandidateScore(query, reading, item),
       );
       sawTransientFailure ||= romanized.transient;
       if (romanized.result) return romanized.result;
     }
   }
+
+  console.info("[VividLyrics] Bini lookup diagnostic", {
+    spotifyId: query.spotifyId,
+    reason: missReason(diagnostics, sawTransientFailure),
+    catalogResults: diagnostics.catalogItems,
+    matchedCandidates: diagnostics.matchedItems,
+    missingOrInvalidUrls: diagnostics.missingOrInvalidUrls,
+    lyricHttp404: diagnostics.lyricHttp404,
+    lyricOtherHttp: diagnostics.lyricOtherHttp,
+    parseRejected: diagnostics.parseRejected,
+    lyricRequestFailures: diagnostics.lyricRequestFailures,
+    transientFailure: sawTransientFailure,
+  });
 
   return sawTransientFailure
     ? { status: "transient", provider: "BiniLyrics", reason: "request-or-parse-failure" }

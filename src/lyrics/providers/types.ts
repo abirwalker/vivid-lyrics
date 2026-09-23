@@ -6,7 +6,6 @@ export type TrackQuery = {
   artists: string[];
   album?: string;
   durationMs?: number;
-  isrc?: string;
 };
 
 export type ProviderName = "BiniLyrics" | "AMLL" | "LRCLIB";

@@ -8,7 +8,6 @@ export type MatchCandidate = {
   artists: string[];
   albums?: string[];
   durationMs?: number;
-  isrcs?: string[];
   spotifyIds?: string[];
 };
 
@@ -20,12 +19,6 @@ export function normalizeMatchText(value?: string): string {
     .replace(/&/g, " and ")
     .replace(/[^\p{L}\p{N}]+/gu, " ")
     .trim();
-}
-
-export function cleanIsrc(value: unknown): string | undefined {
-  if (typeof value !== "string") return undefined;
-  const cleaned = value.replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
-  return /^[A-Z]{2}[A-Z0-9]{3}\d{7}$/.test(cleaned) ? cleaned : undefined;
 }
 
 export function cleanTitleForSearch(title: string): string {
@@ -80,9 +73,6 @@ function hasUnexpectedVersion(query: TrackQuery, candidate: MatchCandidate): boo
 }
 
 export function scoreCandidate(query: TrackQuery, candidate: MatchCandidate): number | null {
-  const queryIsrc = cleanIsrc(query.isrc);
-  const candidateIsrcs = (candidate.isrcs ?? []).map(cleanIsrc).filter(Boolean);
-  if (queryIsrc && candidateIsrcs.includes(queryIsrc)) return 1000;
   if (candidate.spotifyIds?.includes(query.spotifyId)) return 950;
   if (hasUnexpectedVersion(query, candidate)) return null;
 
