@@ -33,6 +33,7 @@ export type Settings = {
   mainPlayerWidget: boolean;
   fullscreenPlayerWidget: boolean;
   performanceLogging: boolean;
+  romanizedLyricsConsoleDump: boolean;
   autoResumeDelay: number;
 };
 
@@ -68,6 +69,7 @@ const defaults: Settings = {
   mainPlayerWidget: false,
   fullscreenPlayerWidget: true,
   performanceLogging: false,
+  romanizedLyricsConsoleDump: false,
   autoResumeDelay: 10,
 };
 

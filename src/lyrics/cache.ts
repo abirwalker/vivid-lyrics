@@ -1,7 +1,7 @@
 import type { TransformedLyrics } from "./types.ts";
 import type { ProviderName } from "./providers/types.ts";
 
-const CACHE_PREFIX = "VividLyrics/lyrics/v6/";
+const CACHE_PREFIX = "VividLyrics/lyrics/v1/";
 const POSITIVE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const NEGATIVE_TTL_MS = 20 * 60 * 1000;
 

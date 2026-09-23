@@ -477,7 +477,9 @@ function observeNPV() {
       key !== "cardScrollMode" &&
       key !== "centeredTextCard" &&
       key !== "animationStyle" &&
-      key !== "romanization"
+      key !== "romanization" &&
+      key !== "gradientDirection" &&
+      key !== "stripBackgroundBrackets"
     ) {
       return;
     }

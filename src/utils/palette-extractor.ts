@@ -335,9 +335,13 @@ function hexToRgbChannels(hex: string): string {
   if (clean.length === 3) {
     clean = clean.split("").map((c) => c + c).join("");
   }
-  const r = parseInt(clean.slice(0, 2), 16) || 255;
-  const g = parseInt(clean.slice(2, 4), 16) || 255;
-  const b = parseInt(clean.slice(4, 6), 16) || 255;
+  const parseChannel = (value: string): number => {
+    const channel = parseInt(value, 16);
+    return Number.isNaN(channel) ? 255 : channel;
+  };
+  const r = parseChannel(clean.slice(0, 2));
+  const g = parseChannel(clean.slice(2, 4));
+  const b = parseChannel(clean.slice(4, 6));
   return `${r} ${g} ${b}`;
 }
 

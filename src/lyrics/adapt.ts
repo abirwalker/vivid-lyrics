@@ -1,4 +1,5 @@
 import type { TransformedLyrics } from "./types";
+import { get } from "../stores/settings";
 import { dumpRomanizedLyrics } from "../tools/dump-romanized";
 import { romanizeBengali, romanizeCantonese, romanizeChinese, romanizeJP, romanizeKorean } from "./romanize/romanize";
 import { romanizeThaiLine } from "./romanize/romanize-th";
@@ -38,6 +39,21 @@ function syllableRomaji(reading: LineReading, start: number, end: number): Promi
   return kanaToRomaji(seg).then((romaji) => romaji || (seg === "っ" ? "tsu" : seg));
 }
 
+function romanizedTextFromSyllables(syllables: any[]): string {
+  return syllables.map((syllable, index) => {
+    const text = (syllable.romanizedText ?? syllable.RomanizedText ?? "").trim();
+    if (index === 0) return text;
+
+    const previous = syllables[index - 1];
+    const previousText = (previous.romanizedText ?? previous.RomanizedText ?? "").trim();
+    const startsWord =
+      syllable.RomanizedStartsWord ??
+      syllable.romanizedStartsWord ??
+      !(previous.IsPartOfWord ?? previous.isPartOfWord);
+    return `${startsWord && previousText && text ? " " : ""}${text}`;
+  }).join("");
+}
+
 export async function fillRomanizedText(lyrics: TransformedLyrics): Promise<void> {
   const language = lyrics.romanizedLanguage;
   if (
@@ -57,7 +73,6 @@ export async function fillRomanizedText(lyrics: TransformedLyrics): Promise<void
   }
 
   const t0 = performance.now();
-  const romanizedDump: Array<[string, string]> = [];
   let fromApi = 0;
   let fromLindera = 0;
 
@@ -69,10 +84,14 @@ export async function fillRomanizedText(lyrics: TransformedLyrics): Promise<void
       } else if (line.romanizedText) {
         fromApi++;
       }
-      if (line.romanizedText) romanizedDump.push([line.text, line.romanizedText]);
     }
     console.log(`[VividLyrics] fillRomanizedText: ${lyrics.lines.length} static lines — ${fromApi} from API, ${fromLindera} via Lindera (${Math.round(performance.now() - t0)}ms)`);
-    dumpRomanizedLyrics(romanizedDump, "Japanese");
+    if (get("romanizedLyricsConsoleDump")) {
+      dumpRomanizedLyrics(
+        lyrics.lines.map((line) => [line.text, line.romanizedText ?? ""]),
+        "Japanese",
+      );
+    }
     return;
   }
 
@@ -195,23 +214,28 @@ export async function fillRomanizedText(lyrics: TransformedLyrics): Promise<void
 
   console.log(`[VividLyrics] fillRomanizedText: ${content.length} items — ${fromApi} from API, ${fromLindera} via Lindera in ${Math.round(performance.now() - t0)}ms`);
 
-  // Build romanized dump for debugging / comparison
-  for (const item of content) {
-    if (item.type === "Interlude" || item.Type === "Interlude") { romanizedDump.push(["", ""]); continue; }
-
-    const syllables = item.Lead?.Syllables ?? item.lead?.syllables ?? [];
-    if (syllables.length > 0) {
-      // Regenerate the whole line with proper token-boundary spacing. The
-      // per-syllable pieces can't do this: a boundary falling between two
-      // syllables would lose its NBSP in the concatenation.
-      const fullText = syllables.map((s: any) => s.text ?? s.Text ?? "").join("");
-      romanizedDump.push(fullText ? [fullText, await romanizeJP(fullText)] : ["", ""]);
-    } else {
-      romanizedDump.push([item.text ?? item.Text ?? "", item.romanizedText ?? item.RomanizedText ?? ""]);
+  if (get("romanizedLyricsConsoleDump")) {
+    const dumpLines: Array<[string, string]> = [];
+    for (const item of content) {
+      if (item.type === "Interlude" || item.Type === "Interlude") {
+        dumpLines.push(["", ""]);
+        continue;
+      }
+      const syllables = item.Lead?.Syllables ?? item.lead?.syllables ?? [];
+      if (syllables.length > 0) {
+        dumpLines.push([
+          syllables.map((syllable: any) => syllable.text ?? syllable.Text ?? "").join(""),
+          romanizedTextFromSyllables(syllables),
+        ]);
+      } else {
+        dumpLines.push([
+          item.text ?? item.Text ?? "",
+          item.romanizedText ?? item.RomanizedText ?? "",
+        ]);
+      }
     }
+    dumpRomanizedLyrics(dumpLines, "Japanese");
   }
-
-  dumpRomanizedLyrics(romanizedDump, "Japanese");
 }
 
 /** Fill non-Japanese romanization without changing the provider's syllable timing. */
@@ -240,8 +264,12 @@ async function fillSimpleRomanizedText(
   if (lyrics.type === "Static") {
     for (const line of lyrics.lines) await fill(line, line.text);
     console.log(`[VividLyrics] fillRomanizedText: ${lyrics.lines.length} static ${language} lines — ${fromApi} from API, ${generated} generated`);
-    const dumpLines = lyrics.lines.map((line) => [line.text, line.romanizedText ?? ""] as [string, string]);
-    dumpRomanizedLyrics(dumpLines, language);
+    if (get("romanizedLyricsConsoleDump")) {
+      dumpRomanizedLyrics(
+        lyrics.lines.map((line) => [line.text, line.romanizedText ?? ""]),
+        language,
+      );
+    }
     return;
   }
 
@@ -267,19 +295,26 @@ async function fillSimpleRomanizedText(
     }
   }
   console.log(`[VividLyrics] fillRomanizedText: ${content.length} ${language} items — ${fromApi} from API, ${generated} generated`);
-
-  // Build the full-line romanized dump for debugging / comparison (matches
-  // the JP path: re-romanize the joined line so word-level spacing is right).
-  const dumpLines: Array<[string, string]> = [];
-  for (const item of content) {
-    if (item.type === "Interlude" || item.Type === "Interlude") { dumpLines.push(["", ""]); continue; }
-    const syllables = item.Lead?.Syllables ?? item.lead?.syllables ?? [];
-    if (syllables.length > 0) {
-      const fullText = syllables.map((s: any) => s.text ?? s.Text ?? "").join("");
-      dumpLines.push(fullText ? [fullText, await romanize(fullText)] : ["", ""]);
-    } else {
-      dumpLines.push([item.text ?? item.Text ?? "", item.romanizedText ?? item.RomanizedText ?? ""]);
+  if (get("romanizedLyricsConsoleDump")) {
+    const dumpLines: Array<[string, string]> = [];
+    for (const item of content) {
+      if (item.type === "Interlude" || item.Type === "Interlude") {
+        dumpLines.push(["", ""]);
+        continue;
+      }
+      const syllables = item.Lead?.Syllables ?? item.lead?.syllables ?? [];
+      if (syllables.length > 0) {
+        dumpLines.push([
+          syllables.map((syllable: any) => syllable.text ?? syllable.Text ?? "").join(""),
+          romanizedTextFromSyllables(syllables),
+        ]);
+      } else {
+        dumpLines.push([
+          item.text ?? item.Text ?? "",
+          item.romanizedText ?? item.RomanizedText ?? "",
+        ]);
+      }
     }
+    dumpRomanizedLyrics(dumpLines, language);
   }
-  dumpRomanizedLyrics(dumpLines, language);
 }

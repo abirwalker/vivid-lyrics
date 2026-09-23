@@ -14,11 +14,11 @@ export function on(name: string, cb: Callback): ListenerId {
 }
 
 export function off(id: ListenerId): boolean {
-  for (const listeners of registry.values()) {
+  for (const [name, listeners] of registry) {
     if (listeners.has(id)) {
       listeners.delete(id);
       if (listeners.size === 0) {
-        registry.delete(key(registry, id));
+        registry.delete(name);
       }
       return true;
     }
@@ -33,11 +33,4 @@ export function emit(name: string, ...args: any[]): void {
       cb(...args);
     }
   }
-}
-
-function key(map: Map<string, Map<ListenerId, Callback>>, id: ListenerId): string {
-  for (const [k, v] of map) {
-    if (v.has(id)) return k;
-  }
-  return "";
 }

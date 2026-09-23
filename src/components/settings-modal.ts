@@ -542,6 +542,11 @@ function buildContent(): HTMLElement {
         control: makeToggle(s.performanceLogging, (v) => set("performanceLogging", v)),
       },
       {
+        label: "Log Romanized Lyrics",
+        desc: "Print original and romanized lyric text to DevTools when lyrics load",
+        control: makeToggle(s.romanizedLyricsConsoleDump, (v) => set("romanizedLyricsConsoleDump", v)),
+      },
+      {
         label: "Diagnostic Report",
         desc: "Copy the latest performance snapshot as JSON",
         control: makeCopyPerformanceButton(),

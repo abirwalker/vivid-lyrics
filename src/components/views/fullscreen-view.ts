@@ -99,6 +99,14 @@ function onKeyDown(e: KeyboardEvent): void {
   const mode = getPageMode();
   if (mode === "page") return;
 
+  const target = e.target;
+  if (
+    target instanceof HTMLElement &&
+    (target.isContentEditable ||
+      target.matches("input, textarea, select") ||
+      target.closest('[contenteditable="true"], [role="textbox"]'))
+  ) return;
+
   if (e.key === "Escape") {
     e.preventDefault();
     if (mode === "fullscreen") {
