@@ -1,10 +1,11 @@
 import { on, off, emit } from "../utils/events";
+import { get } from "./settings";
 
 let showRomanized = false;
 let hasRomanizedText = false;
 
 export function getRomanize(): boolean {
-  return showRomanized;
+  return showRomanized && get("romanization");
 }
 
 export function hasRomanizeCapability(): boolean {
@@ -21,9 +22,20 @@ export function toggleRomanize(): void {
 }
 
 export function resetRomanize(canRomanize: boolean): void {
-  const changed = hasRomanizedText !== canRomanize || showRomanized !== canRomanize;
+  const wasCapable = hasRomanizedText;
   hasRomanizedText = canRomanize;
-  showRomanized = canRomanize;
+  let changed = wasCapable !== canRomanize;
+
+  if (!canRomanize) {
+    if (showRomanized) {
+      showRomanized = false;
+      changed = true;
+    }
+  } else if (!wasCapable && get("romanization") && !showRomanized) {
+    showRomanized = true;
+    changed = true;
+  }
+
   if (changed) emit("romanize:change", showRomanized);
 }
 

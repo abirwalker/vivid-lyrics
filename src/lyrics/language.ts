@@ -49,14 +49,17 @@ export function detectRomanizedLanguage(language: string, texts: Iterable<string
     }
   }
 
+  // Latin needs no romanization — mixed EN+ZH ad-libs must not win the count.
   let detected = "Latin";
   let largestCount = 0;
   for (const [name, count] of Object.entries(counts)) {
+    if (name === "Latin") continue;
     if (count > largestCount) {
       detected = name;
       largestCount = count;
     }
   }
+  if (largestCount === 0) return "Latin";
   if ((counts.Japanese ?? 0) > 0 && detected === "Chinese") return "Japanese";
   return detected;
 }

@@ -2,6 +2,8 @@ import { fetchLyrics } from "../lyrics/fetch";
 import type { TransformedLyrics } from "../lyrics/types";
 import { fillRomanizedText } from "../lyrics/adapt";
 import { on, off, emit } from "../utils/events";
+import { get, onSettingsChange } from "./settings";
+import { hasRomanizeCapability, setRomanize } from "./romanize";
 
 
 let currentLyrics: TransformedLyrics | null = null;
@@ -32,6 +34,7 @@ export function onLyricsChange(cb: (lyrics: TransformedLyrics | null) => void): 
 
 async function ensureRomanized(lyrics: TransformedLyrics | null): Promise<void> {
   if (!lyrics) return;
+  if (!get("romanization")) return;
 
   const lang = lyrics.romanizedLanguage;
   if (
@@ -149,3 +152,17 @@ export function clearLyrics(): void {
   currentFetchId++;
   emit("lyrics:change", null);
 }
+
+onSettingsChange(({ key }) => {
+  if (key !== "romanization" && key !== null) return;
+  if (!get("romanization") || !currentLyrics) return;
+
+  if (hasRomanizeCapability()) setRomanize(true);
+
+  const lyrics = currentLyrics;
+  const fetchId = currentFetchId;
+  void ensureRomanized(lyrics).then(() => {
+    if (fetchId !== currentFetchId || currentLyrics !== lyrics) return;
+    emit("lyrics:change", lyrics);
+  });
+});
