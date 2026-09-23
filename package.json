@@ -1,7 +1,7 @@
 {
   "name": "vivid-lyrics",
   "author": "abirwalker",
-  "version": "0.2.0",
+  "version": "0.2.5",
   "description": "Making lyrics fun again",
   "scripts": {
     "sc": "spicetify-creator",

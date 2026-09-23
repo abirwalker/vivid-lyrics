@@ -8,7 +8,7 @@ import { setupDevBadge } from "./tools/dev-badge";
 import { setupPerformanceLogger } from "./tools/performance-logger";
 import { setupDynamicColors } from "./utils/palette-extractor";
 
-const VividLyrics = { version: "0.2.0" };
+const VividLyrics = { version: "0.2.5" };
 
 async function waitForSpicetify(): Promise<void> {
   return new Promise((resolve) => {

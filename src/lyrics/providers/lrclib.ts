@@ -13,7 +13,7 @@ import type { Provider, ProviderResult, TrackQuery } from "./types.ts";
 
 const API = "https://lrclib.net/api";
 const HEADERS = {
-  "Lrclib-Client": "VividLyrics/0.2.0 (https://github.com/abirwalker/vivid-lyrics)",
+  "Lrclib-Client": "VividLyrics/0.2.5 (https://github.com/abirwalker/vivid-lyrics)",
 };
 
 type LrclibItem = {
