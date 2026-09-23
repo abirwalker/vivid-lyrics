@@ -5,19 +5,37 @@ let initPromise: Promise<any> | null = null;
 
 let progressEl: HTMLDivElement | null = null;
 
-const PROD_WASM_URL =
-  "https://raw.githubusercontent.com/abirwalker/vivid-lyrics/master/assets/lindera_wasm_bg.wasm";
+const WASM_SOURCES = [
+  "https://unpkg.com/lindera-wasm-web-unidic@2.0.0/lindera_wasm_bg.wasm",
+  "https://cdn.jsdelivr.net/npm/lindera-wasm-web-unidic@2.0.0/lindera_wasm_bg.wasm",
+  "https://raw.githubusercontent.com/abirwalker/vivid-lyrics/master/assets/lindera_wasm_bg.wasm",
+] as const;
 
-/** Dev serves the sidecar next to the injected script; production fetches the
- *  committed binary from GitHub (Spicetify never installs the sidecar). */
-function getWasmUrl(): string {
+/** Dev serves the sidecar next to the injected script. */
+function getDevWasmUrl(): string | undefined {
   try {
     const liveReload = document.getElementById("sc-js-injected") as HTMLScriptElement | null;
     if (liveReload?.src) return new URL("lindera_wasm_bg.wasm", liveReload.src).href;
   } catch {
     /* fall through */
   }
-  return PROD_WASM_URL;
+  return undefined;
+}
+
+async function initWasm(): Promise<void> {
+  const devUrl = getDevWasmUrl();
+  const sources = devUrl ? [devUrl, ...WASM_SOURCES] : [...WASM_SOURCES];
+  let lastError: unknown;
+  for (const url of sources) {
+    try {
+      await __wbg_init(url);
+      return;
+    } catch (error) {
+      lastError = error;
+      console.warn("[VividLyrics] WASM source failed, trying next:", url, error);
+    }
+  }
+  throw lastError;
 }
 
 function showProgress(): void {
@@ -107,7 +125,7 @@ export async function ensureLindera(): Promise<any> {
     initPromise = (async () => {
       showProgress();
       try {
-        await __wbg_init(getWasmUrl());
+        await initWasm();
         const builder = new TokenizerBuilder();
         builder.setMode("normal");
         builder.setDictionary("embedded://unidic");
