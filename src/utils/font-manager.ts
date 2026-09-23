@@ -10,6 +10,7 @@ const DIRECT_FONT_EXTENSIONS = /\.(?:woff2?|ttf|otf)$/i;
 
 const GOOGLE_FONTS: Partial<Record<Settings["fontFamily"], string>> = {
   outfit: "https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800;900&display=swap",
+  "dm-sans": "https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&display=swap",
   "crimson-pro": "https://fonts.googleapis.com/css2?family=Crimson+Pro:ital,wght@0,400..900;1,400..900&display=swap",
   "jetbrains-mono": "https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700;800&display=swap",
   "patrick-hand": "https://fonts.googleapis.com/css2?family=Patrick+Hand&display=swap",
@@ -19,6 +20,7 @@ const ALL_FONT_CLASSES = [
   "vl-font-default",
   "vl-font-spicy",
   "vl-font-outfit",
+  "vl-font-dm-sans",
   "vl-font-crimson-pro",
   "vl-font-jetbrains-mono",
   "vl-font-patrick-hand",

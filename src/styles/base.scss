@@ -9,6 +9,9 @@
 .vl-font-outfit {
     --vl-font-stack: "Outfit", var(--fallback-fonts, sans-serif);
 }
+.vl-font-dm-sans {
+    --vl-font-stack: "DM Sans", var(--fallback-fonts, sans-serif);
+}
 .vl-font-crimson-pro {
     --vl-font-stack: "Crimson Pro", var(--fallback-fonts, serif);
 }

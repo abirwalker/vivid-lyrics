@@ -343,6 +343,7 @@ function buildContent(): HTMLElement {
             { label: "Default", value: "default" },
             { label: "Spicy", value: "spicy" },
             { label: "Outfit", value: "outfit" },
+            { label: "DM Sans", value: "dm-sans" },
             { label: "Crimson Pro", value: "crimson-pro" },
             { label: "JetBrains Mono", value: "jetbrains-mono" },
             { label: "Patrick Hand", value: "patrick-hand" },

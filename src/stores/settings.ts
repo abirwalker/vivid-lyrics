@@ -14,7 +14,7 @@ export type Settings = {
   romanization: boolean;
   romanizationPosition: "top" | "bottom" | "replace";
   fontSize: number;
-  fontFamily: "default" | "spicy" | "outfit" | "crimson-pro" | "jetbrains-mono" | "patrick-hand" | "custom";
+  fontFamily: "default" | "spicy" | "outfit" | "dm-sans" | "crimson-pro" | "jetbrains-mono" | "patrick-hand" | "custom";
   customFontName: string;
   hideNativeLyrics: boolean;
   controlsPosition: "top" | "bottom";
